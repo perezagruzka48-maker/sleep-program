@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Сон в менопаузе — 6-недельная CBT-I программа</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0b1a; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  input[type=range] { -webkit-appearance: none; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.1); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #7c6fcd; cursor: pointer; }
+  input[type=time]::-webkit-calendar-picker-indicator { filter: invert(0.7); }
+  textarea { font-family: inherit; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #0d0b1a; }
+  ::-webkit-scrollbar-thumb { background: #3a3060; border-radius: 3px; }
+  input:focus { outline: none; border-color: #7c6fcd !important; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } = Recharts;
+
+
+// ─── helpers ───────────────────────────────────────────────────────────────
+const gv = (id) => { const el = document.getElementById(id); return el ? el.value : ""; };
+const gc = (id) => { const el = document.getElementById(id); return el ? el.checked : false; };
+
+const LS_KEY = "sleep_program_v1";
+const load = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; } };
+const save = (data) => localStorage.setItem(LS_KEY, JSON.stringify(data));
+
+const WEEKS = [
+  { n: 1, title: "Диагностика", icon: "🔍", color: "#7c6fcd" },
+  { n: 2, title: "Ограничение сна", icon: "⏰", color: "#5b8dee" },
+  { n: 3, title: "Контроль стимулов", icon: "🛏️", color: "#4ca8a8" },
+  { n: 4, title: "Работа с мыслями", icon: "🧠", color: "#6a9f5c" },
+  { n: 5, title: "Гигиена сна", icon: "🌿", color: "#c47f3a" },
+  { n: 6, title: "Закрепление", icon: "⭐", color: "#b05a9e" },
+];
+
+const DISCLAIMER = "Программа носит образовательный характер и не является медицинской услугой.";
+
+const WEEK_DESCRIPTIONS = {
+  1: "7 дней ведения дневника сна. Данные помогут AI вычислить вашу эффективность сна и определить тип нарушения.",
+  2: "Техника ограничения сна — ключевой инструмент CBT-I. AI назначит персональное терапевтическое окно.",
+  3: "Переобучение мозга: кровать — только для сна. Жёсткий подъём. Правило 20 минут.",
+  4: "Когнитивная работа: дневник беспокойств, парадоксальное намерение, остановка тревожных мыслей.",
+  5: "Персональная гигиена сна в менопаузе: температура, свет, питание, тренировки через гормональный механизм.",
+  6: "Последняя неделя — просто наблюдайте за сном без новых техник. Ведите дневник как обычно. AI проанализирует всю динамику за 6 недель и составит персональный план поддержания результата.",
+};
+
+// ─── AI call ───────────────────────────────────────────────────────────────
+async function callAI(prompt, maxTokens = 1000) {
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: maxTokens,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+  if (!resp.ok) throw new Error(`API error ${resp.status}`);
+  const data = await resp.json();
+  return data.content?.map(b => b.text || "").join("") || "";
+}
+
+// ─── sleep efficiency ──────────────────────────────────────────────────────
+function calcEfficiency(entry) {
+  try {
+    if (!entry.bedTime || !entry.riseTime) return 0;
+    const bedH = parseInt(entry.bedTime.split(":")[0]);
+    const bedM = parseInt(entry.bedTime.split(":")[1]);
+    const riseH = parseInt(entry.riseTime.split(":")[0]);
+    const riseM = parseInt(entry.riseTime.split(":")[1]);
+    let inBed = (riseH * 60 + riseM) - (bedH * 60 + bedM);
+    if (inBed <= 0) inBed += 24 * 60;
+    const sleepOnset = parseInt(entry.sleepOnset) || 0;
+    const awakenings = (parseInt(entry.awakenings) || 0) * (parseInt(entry.awakeningDuration) || 0);
+    const asleep = inBed - sleepOnset - awakenings;
+    if (asleep <= 0 || inBed <= 0) return 0;
+    return Math.round((asleep / inBed) * 100);
+  } catch { return 0; }
+}
+
+// ─── Week 1 diary form ─────────────────────────────────────────────────────
+function DiaryForm({ day, existing, onSave }) {
+  const [form, setForm] = useState(existing || {
+    bedTime: "", sleepOnset: "", awakenings: "",
+    awakeningDuration: "", riseTime: "", quality: "5",
+    hotFlashes: "0", stress: "5", thoughts: "",
+  });
+
+  const up = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const eff = calcEfficiency(form);
+
+  return (
+    <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 14, padding: 20, marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <span style={{ color: "#a89fe8", fontWeight: 600 }}>День {day}</span>
+        {eff > 0 && <span style={{ background: eff >= 85 ? "#2d6a4f" : eff >= 75 ? "#865a1a" : "#6b2020", color: "#fff", borderRadius: 20, padding: "2px 10px", fontSize: 12 }}>Эффективность: {eff}%</span>}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        {[
+          ["bedTime", "Лечь в постель", "time"],
+          ["riseTime", "Финальный подъём", "time"],
+        ].map(([k, label, type]) => (
+          <div key={k}>
+            <label style={{ fontSize: 11, color: "#8888aa", display: "block", marginBottom: 4 }}>{label}</label>
+            <input type={type} value={form[k]} onChange={e => up(k, e.target.value)}
+              style={{ width: "100%", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "6px 10px", color: "#e8e4f5", fontSize: 14, boxSizing: "border-box" }} />
+          </div>
+        ))}
+
+        {[
+          ["sleepOnset", "Засыпание (мин)", "0–120"],
+          ["awakenings", "Пробуждений (раз)", "0–10"],
+          ["awakeningDuration", "Время бодрствования (мин)", "0–120"],
+        ].map(([k, label, placeholder]) => (
+          <div key={k}>
+            <label style={{ fontSize: 11, color: "#8888aa", display: "block", marginBottom: 4 }}>{label}</label>
+            <input type="number" value={form[k]} placeholder={placeholder} onChange={e => up(k, e.target.value)}
+              style={{ width: "100%", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "6px 10px", color: "#e8e4f5", fontSize: 14, boxSizing: "border-box" }} />
+          </div>
+        ))}
+
+        {[
+          ["quality", "Качество сна", 10],
+          ["stress", "Стресс вчера", 10],
+          ["hotFlashes", "Приливы ночью", 10],
+        ].map(([k, label, max]) => (
+          <div key={k} style={{ gridColumn: k === "hotFlashes" ? "1 / -1" : "auto" }}>
+            <label style={{ fontSize: 11, color: "#8888aa", display: "block", marginBottom: 4 }}>{label}: <b style={{ color: "#e8e4f5" }}>{form[k]}</b>{k !== "hotFlashes" ? "/10" : " шт."}</label>
+            <input type="range" min="0" max={max} value={form[k]} onChange={e => up(k, e.target.value)}
+              style={{ width: "100%", accentColor: "#7c6fcd" }} />
+          </div>
+        ))}
+      </div>
+
+      <button onClick={() => onSave(day, form)}
+        style={{ marginTop: 14, width: "100%", background: "linear-gradient(135deg, #7c6fcd, #5b8dee)", border: "none", borderRadius: 10, padding: "10px", color: "#fff", fontWeight: 600, cursor: "pointer", fontSize: 14 }}>
+        Сохранить день {day}
+      </button>
+    </div>
+  );
+}
+
+// ─── Week checklist items ──────────────────────────────────────────────────
+function CheckItem({ label, checked, onChange }) {
+  return (
+    <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+      <div onClick={onChange} style={{
+        width: 20, height: 20, minWidth: 20, borderRadius: 6, border: "2px solid",
+        borderColor: checked ? "#7c6fcd" : "rgba(255,255,255,0.2)",
+        background: checked ? "#7c6fcd" : "transparent",
+        display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1
+      }}>
+        {checked && <span style={{ color: "#fff", fontSize: 12 }}>✓</span>}
+      </div>
+      <span style={{ fontSize: 14, color: checked ? "#c8c0f0" : "#8888aa", lineHeight: 1.4 }}>{label}</span>
+    </label>
+  );
+}
+
+// ─── AI Analysis block ─────────────────────────────────────────────────────
+function AIBlock({ weekN, diaryData, extraData, allWeeksData, profile, onNextWeek, onResultReady }) {
+  const [result, setResult] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+
+  const buildPrompt = () => {
+    const base = `Ты — специалист по когнитивно-поведенческой терапии бессонницы (CBT-I) с опытом работы с женщинами в менопаузе.
+Отвечай строго на русском языке. Тон: тёплый, поддерживающий, конкретный.
+${profile ? `Пациентка: ${profile.name}, ${profile.age} лет. Обращайся к ней по имени.` : ""}
+ВАЖНО: укладывайся в лимит токенов, но каждая начатая мысль должна быть завершена полным предложением с точкой. Если не хватает места для нового пункта — не начинай его. Лучше меньше пунктов, но каждый закончен.`;
+
+    const disclaimer = `\n\nВ конце ответа добавь дословно:\n«Снижение дофамина в период менопаузы делает формирование новых привычек по-настоящему трудным. Если вы соблюдаете рекомендации но не видите быстрого результата — это нормально. Изменения в архитектуре сна происходят постепенно. Продолжайте.»`;
+
+    if (weekN === 6 && allWeeksData) {
+      return `${base}
+Проведи итоговый анализ 6-недельной программы CBT-I.
+
+Данные по неделям:
+${JSON.stringify(allWeeksData, null, 2)}
+
+Формат ответа:
+## 📊 ИТОГОВАЯ ДИНАМИКА
+[динамика эффективности сна по неделям в цифрах, что изменилось]
+
+## 🏆 ЧТО СРАБОТАЛО ЛУЧШЕ ВСЕГО
+[конкретные техники с объяснением почему]
+
+## 📋 ПЕРСОНАЛЬНЫЙ ПЛАН ПОДДЕРЖАНИЯ
+[3-4 конкретных пункта]
+
+## 🔄 ЕСЛИ БЕССОННИЦА ВЕРНЁТСЯ
+[пошаговый алгоритм]
+
+## 💫 ИТОГ
+[личное обращение, что достигнуто]
+${disclaimer}`;
+    }
+
+    const entries = diaryData ? Object.entries(diaryData).map(([day, d]) => {
+      const eff = calcEfficiency(d);
+      return `День ${day}: лечь ${d.bedTime}, засыпание ${d.sleepOnset}мин, пробуждений ${d.awakenings}×${d.awakeningDuration}мин, подъём ${d.riseTime}, качество ${d.quality}/10, приливы ${d.hotFlashes}, стресс ${d.stress}/10, эффективность ${eff}%`;
+    }).join("\n") : "";
+
+    return `${base}
+Неделя ${weekN} программы CBT-I для пациентки в пременопаузе.
+
+${entries ? `Дневник сна:\n${entries}\n` : ""}
+${extraData ? `Дополнительные данные: ${JSON.stringify(extraData)}` : ""}
+
+Формат ответа:
+## 📊 АНАЛИЗ НЕДЕЛИ ${weekN}
+[динамика в цифрах, что изменилось]
+
+## 🎯 ЗАДАЧА НА СЛЕДУЮЩУЮ НЕДЕЛЮ
+[конкретная техника с механизмом]
+
+## ⏰ ВАШЕ ОКНО СНА
+Ложитесь: [время]
+Вставайте: [время]
+
+## 💡 ПЕРСОНАЛЬНОЕ НАБЛЮДЕНИЕ
+[одно наблюдение по её данным]
+${disclaimer}`;
+  };
+
+  const run = async () => {
+    setLoading(true); setErr(""); setResult("");
+    try {
+      const text = await callAI(buildPrompt(), weekN === 6 ? 2500 : 1000);
+      setResult(text);
+      if (onResultReady) onResultReady(text);
+    } catch (e) {
+      setErr("Ошибка соединения с AI. Проверьте интернет и попробуйте снова.");
+    } finally { setLoading(false); }
+  };
+
+  const filledDays = diaryData ? Object.keys(diaryData).length : 0;
+  const canAnalyze = weekN === 1 ? filledDays >= 5 : weekN === 6 ? true : filledDays >= 4;
+
+  return (
+    <div style={{ marginTop: 20, borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 20 }}>
+      <button onClick={run} disabled={loading || !canAnalyze}
+        style={{
+          width: "100%", padding: "14px", borderRadius: 12,
+          background: canAnalyze ? "linear-gradient(135deg, #7c6fcd 0%, #5b8dee 100%)" : "rgba(255,255,255,0.05)",
+          border: canAnalyze ? "none" : "1px solid rgba(255,255,255,0.1)",
+          color: canAnalyze ? "#fff" : "#666", fontWeight: 700, fontSize: 15, cursor: canAnalyze ? "pointer" : "not-allowed",
+          boxShadow: canAnalyze ? "0 4px 20px rgba(124,111,205,0.4)" : "none",
+        }}>
+        {loading ? "✨ Анализирую..." : canAnalyze ? `🤖 Получить анализ недели ${weekN}` : `Заполните ещё ${(weekN === 1 ? 5 : 4) - filledDays} дн.`}
+      </button>
+      {loading && (
+        <div style={{ textAlign: "center", padding: 20 }}>
+          <div style={{ display: "inline-block", width: 36, height: 36, border: "3px solid rgba(124,111,205,0.3)", borderTopColor: "#7c6fcd", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+          <p style={{ color: "#8888aa", fontSize: 13, marginTop: 10 }}>AI анализирует ваши данные…</p>
+        </div>
+      )}
+      {err && <div style={{ marginTop: 12, background: "rgba(180,60,60,0.15)", border: "1px solid rgba(180,60,60,0.3)", borderRadius: 10, padding: 14, color: "#f09090", fontSize: 14 }}>{err}</div>}
+      {result && (
+        <>
+          <div style={{ marginTop: 16, background: "rgba(124,111,205,0.08)", border: "1px solid rgba(124,111,205,0.2)", borderRadius: 14, padding: 20 }}>
+            {result.split("\n").map((line, i) => {
+              if (line.startsWith("## ")) return <h3 key={i} style={{ color: "#a89fe8", fontWeight: 700, fontSize: 16, margin: "16px 0 8px" }}>{line.replace("## ", "")}</h3>;
+              if (line.startsWith("«") || line.startsWith("\"")) return <p key={i} style={{ color: "#c8c0f0", fontSize: 13, fontStyle: "italic", lineHeight: 1.6, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "10px 14px", marginTop: 12 }}>{line}</p>;
+              if (!line.trim()) return <br key={i} />;
+              return <p key={i} style={{ color: "#d0cce8", fontSize: 14, lineHeight: 1.7, margin: "4px 0" }}>{line}</p>;
+            })}
+          </div>
+          {onNextWeek && (
+            <button onClick={onNextWeek}
+              style={{ marginTop: 16, width: "100%", padding: "14px", borderRadius: 12, background: "linear-gradient(135deg, #3a6b3a, #2d8a5a)", border: "none", color: "#fff", fontWeight: 700, fontSize: 15, cursor: "pointer", boxShadow: "0 4px 20px rgba(45,138,90,0.35)", fontFamily: "inherit" }}>
+              Перейти к неделе {weekN + 1} →
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Week 1 ────────────────────────────────────────────────────────────────
+function Week1({ data, setData, profile, onNextWeek }) {
+  const diary = data.diary || {};
+  const saveDiaryDay = (day, entry) => {
+    const newDiary = { ...diary, [day]: entry };
+    setData({ ...data, diary: newDiary });
+  };
+
+  return (
+    <div>
+      <InfoCard text={WEEK_DESCRIPTIONS[1]} />
+      <SectionTitle>📓 Дневник сна — 7 дней</SectionTitle>
+      {[1,2,3,4,5,6,7].map(d => (
+        <DiaryForm key={d} day={d} existing={diary[d]} onSave={saveDiaryDay} />
+      ))}
+      <AIBlock weekN={1} diaryData={diary} profile={profile} onNextWeek={onNextWeek} />
+    </div>
+  );
+}
+
+// ─── Week 2 ────────────────────────────────────────────────────────────────
+function Week2({ data, setData, profile, onNextWeek }) {
+  const diary = data.diary || {};
+  const checks = data.checks || {};
+  const saveDiaryDay = (day, entry) => setData({ ...data, diary: { ...diary, [day]: entry } });
+  const toggleCheck = (day, k) => {
+    const dc = checks[day] || {};
+    setData({ ...data, checks: { ...checks, [day]: { ...dc, [k]: !dc[k] } } });
+  };
+
+  const checkItems = ["Соблюдала окно сна", "Не ложилась раньше назначенного времени", "Встала в назначенное время", "Не спала днём"];
+
+  return (
+    <div>
+      <InfoCard text={WEEK_DESCRIPTIONS[2]} />
+      <div style={{ background: "rgba(91,141,238,0.1)", border: "1px solid rgba(91,141,238,0.25)", borderRadius: 14, padding: 18, marginBottom: 12 }}>
+        <h4 style={{ color: "#5b8dee", margin: "0 0 10px", fontSize: 15 }}>💡 Механизм ограничения сна</h4>
+        <p style={{ color: "#b0b8d8", fontSize: 13, lineHeight: 1.7, margin: 0 }}>
+          Хроническая бессонница — это выученное поведение. Слишком долгое время в постели создаёт ассоциацию «кровать = бодрствование». Ограничение сна сжимает окно, повышает давление сна (аденозин), и за 2–3 недели восстанавливает глубокие стадии. Эффективность сна должна достичь 85%+ перед расширением окна.
+        </p>
+      </div>
+      <div style={{ background: "rgba(196,127,58,0.1)", border: "1px solid rgba(196,127,58,0.3)", borderRadius: 12, padding: "13px 16px", marginBottom: 20, display: "flex", gap: 12, alignItems: "flex-start" }}>
+        <span style={{ fontSize: 18, flexShrink: 0 }}>🚫</span>
+        <div>
+          <p style={{ color: "#c47f3a", fontWeight: 600, fontSize: 13, margin: "0 0 4px" }}>Дневной сон на этой неделе отменяется</p>
+          <p style={{ color: "#a08060", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+            Даже 20 минут днём снижают давление сна к вечеру — и разрушают весь эффект ограничения. Если очень хочется спать днём, это хороший знак: давление сна накапливается. Потерпите до назначенного времени отхода.
+          </p>
+        </div>
+      </div>
+      {[1,2,3,4,5,6,7].map(d => (
+        <div key={d} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: 16, marginBottom: 12 }}>
+          <p style={{ color: "#a89fe8", fontWeight: 600, margin: "0 0 10px" }}>День {d}</p>
+          <DiaryForm day={d} existing={diary[d]} onSave={saveDiaryDay} />
+          <div style={{ marginTop: 10 }}>
+            {checkItems.map(item => (
+              <CheckItem key={item} label={item} checked={!!(checks[d] || {})[item]} onChange={() => toggleCheck(d, item)} />
+            ))}
+          </div>
+        </div>
+      ))}
+      <AIBlock weekN={2} diaryData={diary} extraData={checks} profile={profile} onNextWeek={onNextWeek} />
+    </div>
+  );
+}
+
+// ─── Week 3 ────────────────────────────────────────────────────────────────
+function Week3({ data, setData, profile, onNextWeek }) {
+  const diary = data.diary || {};
+  const checks = data.checks || {};
+  const saveDiaryDay = (day, entry) => setData({ ...data, diary: { ...diary, [day]: entry } });
+  const toggleCheck = (day, k) => {
+    const dc = checks[day] || {};
+    setData({ ...data, checks: { ...checks, [day]: { ...dc, [k]: !dc[k] } } });
+  };
+
+  const checkItems = [
+    "Кровать использовала только для сна и секса",
+    "Встала через 20 мин если не могла заснуть",
+    "Встала в фиксированное время независимо от сна",
+    "При приливе: встала, охладилась, вернулась в постель только когда снова захотелось спать",
+  ];
+
+  return (
+    <div>
+      <InfoCard text={WEEK_DESCRIPTIONS[3]} />
+      <div style={{ background: "rgba(76,168,168,0.1)", border: "1px solid rgba(76,168,168,0.25)", borderRadius: 14, padding: 18, marginBottom: 20 }}>
+        <h4 style={{ color: "#4ca8a8", margin: "0 0 10px", fontSize: 15 }}>🛏️ Три правила этой недели</h4>
+        {[
+          ["Кровать — только для сна", "Мозг должен выстроить ассоциацию: кровать = сон. Никакого телефона, еды, тревожных мыслей в постели."],
+          ["Правило 20 минут", "Если не засыпаете — встаньте. Сядьте при тусклом свете, делайте что-то монотонное. Вернитесь только когда захочется спать."],
+          ["При ночном приливе", "Откиньте одеяло, включите вентилятор, выпейте холодной воды. Не включайте яркий свет — он подавит мелатонин. Запишите время."],
+        ].map(([t, d]) => (
+          <div key={t} style={{ marginBottom: 12 }}>
+            <span style={{ color: "#4ca8a8", fontWeight: 600, fontSize: 13 }}>{t}: </span>
+            <span style={{ color: "#b0b8d8", fontSize: 13 }}>{d}</span>
+          </div>
+        ))}
+      </div>
+      {[1,2,3,4,5,6,7].map(d => (
+        <div key={d} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: 16, marginBottom: 12 }}>
+          <p style={{ color: "#a89fe8", fontWeight: 600, margin: "0 0 10px" }}>День {d}</p>
+          <DiaryForm day={d} existing={diary[d]} onSave={saveDiaryDay} />
+          <div style={{ marginTop: 10 }}>
+            {checkItems.map(item => (
+              <CheckItem key={item} label={item} checked={!!(checks[d] || {})[item]} onChange={() => toggleCheck(d, item)} />
+            ))}
+          </div>
+        </div>
+      ))}
+      <AIBlock weekN={3} diaryData={diary} extraData={checks} profile={profile} onNextWeek={onNextWeek} />
+    </div>
+  );
+}
+
+// ─── Week 4 ────────────────────────────────────────────────────────────────
+function Week4({ data, setData, profile, onNextWeek }) {
+  const diary = data.diary || {};
+  const thoughts = data.thoughts || {};
+  const saveDiaryDay = (day, entry) => setData({ ...data, diary: { ...diary, [day]: entry } });
+  const saveThoughts = (day, text) => setData({ ...data, thoughts: { ...thoughts, [day]: text } });
+
+  return (
+    <div>
+      <InfoCard text={WEEK_DESCRIPTIONS[4]} />
+      <div style={{ background: "rgba(106,159,92,0.1)", border: "1px solid rgba(106,159,92,0.25)", borderRadius: 14, padding: 18, marginBottom: 20 }}>
+        <h4 style={{ color: "#6a9f5c", margin: "0 0 12px", fontSize: 15 }}>🧠 Три когнитивные техники</h4>
+        {[
+          ["Дневник беспокойств", "За 2 часа до сна запишите все тревожные мысли на бумагу. «Я записала это — мозг может отпустить». Это выгружает «оперативную память» перед сном."],
+          ["Парадоксальное намерение", "Лягте и постарайтесь как можно дольше НЕ засыпать. Смотрите в потолок с открытыми глазами. Это разрушает тревогу о засыпании — главный поддерживающий механизм бессонницы."],
+          ["Остановка мыслей", "Когда мысль закручивается: мысленно скажите «Стоп». Представьте знак СТОП. Переключитесь на нейтральный образ — медленно плывущие облака, волны."],
+        ].map(([t, d]) => (
+          <div key={t} style={{ marginBottom: 14 }}>
+            <p style={{ color: "#6a9f5c", fontWeight: 600, fontSize: 13, margin: "0 0 4px" }}>{t}</p>
+            <p style={{ color: "#b0b8d8", fontSize: 13, margin: 0, lineHeight: 1.6 }}>{d}</p>
+          </div>
+        ))}
+      </div>
+      {[1,2,3,4,5,6,7].map(d => (
+        <div key={d} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: 16, marginBottom: 12 }}>
+          <p style={{ color: "#a89fe8", fontWeight: 600, margin: "0 0 10px" }}>День {d}</p>
+          <DiaryForm day={d} existing={diary[d]} onSave={saveDiaryDay} />
+          <div style={{ marginTop: 12 }}>
+            <label style={{ fontSize: 12, color: "#8888aa", display: "block", marginBottom: 6 }}>Мысли перед сном (необязательно):</label>
+            <textarea value={thoughts[d] || ""} onChange={e => saveThoughts(d, e.target.value)} rows={2}
+              style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "8px 12px", color: "#d0cce8", fontSize: 13, resize: "vertical", boxSizing: "border-box" }} />
+          </div>
+        </div>
+      ))}
+      <AIBlock weekN={4} diaryData={diary} extraData={thoughts} profile={profile} onNextWeek={onNextWeek} />
+    </div>
+  );
+}
+
+// ─── Week 5 ────────────────────────────────────────────────────────────────
+function Week5({ data, setData, profile, onNextWeek }) {
+  const diary = data.diary || {};
+  const checks = data.checks || {};
+  const saveDiaryDay = (day, entry) => setData({ ...data, diary: { ...diary, [day]: entry } });
+  const toggleCheck = (day, k) => {
+    const dc = checks[day] || {};
+    setData({ ...data, checks: { ...checks, [day]: { ...dc, [k]: !dc[k] } } });
+  };
+
+  const factors = [
+    ["🌡️ Температура", "Прохладная спальня (18–20°C). Снижение температуры тела — триггер сна. В менопаузе терморегуляция нарушена — спите с вентилятором."],
+    ["💡 Свет", "Нет синего света за 2 ч до сна (телефон, экраны). Синий свет подавляет мелатонин на 3+ часа. Утром — яркий свет 20 мин, это ресинхронизирует циркадный ритм."],
+    ["🥗 Питание", "Нет кофеина после 14:00. Алкоголь: засыпание ускоряет, но разрушает фазу REM и провоцирует ночные пробуждения — именно поэтому «выпила и плохо спала»."],
+    ["🏃 Тренировки", "Аэробная нагрузка улучшает сон, но не позднее 19:00 — адреналин и кортизол после нагрузки держатся 3–4 часа."],
+    ["🫖 Ритуал засыпания", "30 мин релаксации: тёплый душ, травяной чай, лёгкое чтение. Одинаковые действия каждый вечер создают условный рефлекс: этот ритуал = скоро спать."],
+  ];
+
+  const checkItems = factors.map(([t]) => t.replace(/^[^\s]+ /, ""));
+
+  return (
+    <div>
+      <InfoCard text={WEEK_DESCRIPTIONS[5]} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
+        {factors.map(([title, desc]) => (
+          <div key={title} style={{ background: "rgba(196,127,58,0.1)", border: "1px solid rgba(196,127,58,0.2)", borderRadius: 12, padding: 16 }}>
+            <p style={{ color: "#c47f3a", fontWeight: 600, margin: "0 0 6px", fontSize: 14 }}>{title}</p>
+            <p style={{ color: "#b0b8d8", fontSize: 13, margin: 0, lineHeight: 1.6 }}>{desc}</p>
+          </div>
+        ))}
+      </div>
+      {[1,2,3,4,5,6,7].map(d => (
+        <div key={d} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: 16, marginBottom: 12 }}>
+          <p style={{ color: "#a89fe8", fontWeight: 600, margin: "0 0 10px" }}>День {d}</p>
+          <DiaryForm day={d} existing={diary[d]} onSave={saveDiaryDay} />
+          <div style={{ marginTop: 10 }}>
+            {checkItems.map(item => (
+              <CheckItem key={item} label={`✅ ${item}`} checked={!!(checks[d] || {})[item]} onChange={() => toggleCheck(d, item)} />
+            ))}
+          </div>
+        </div>
+      ))}
+      <AIBlock weekN={5} diaryData={diary} extraData={checks} profile={profile} onNextWeek={onNextWeek} />
+    </div>
+  );
+}
+
+// ─── Week 6 ────────────────────────────────────────────────────────────────
+function Week6({ allData, profile, setData, data }) {
+  const diary = data.diary || {};
+  const [aiResult, setAiResult] = useState("");
+
+  const saveDiaryDay = (day, entry) => setData({ ...data, diary: { ...diary, [day]: entry } });
+
+  const weekEfficiencies = Object.entries(allData).map(([wk, wData]) => {
+    const d = wData.diary || {};
+    const effs = Object.values(d).map(e => calcEfficiency(e)).filter(e => e > 0);
+    return { week: `Нед. ${wk}`, avg: effs.length ? Math.round(effs.reduce((a, b) => a + b, 0) / effs.length) : 0 };
+  }).filter(d => d.avg > 0);
+
+  const [showText, setShowText] = useState(false);
+
+  const getReportText = () => {
+    const name = profile?.name || "Участница";
+    return [
+      `ОТЧЁТ ПО ПРОГРАММЕ СНА — CBT-I`,
+      `Составлен для: ${name}`,
+      `Дата: ${new Date().toLocaleDateString("ru-RU")}`,
+      ``,
+      `════════════════════════════════════════`,
+      ``,
+      ...aiResult.split("\n").map(l => l.startsWith("## ") ? `\n${l.replace("## ", "").toUpperCase()}\n` : l),
+      ``,
+      `════════════════════════════════════════`,
+      `Программа носит образовательный характер и не является медицинской услугой.`,
+    ].join("\n");
+  };
+
+  return (
+    <div>
+      <InfoCard text={WEEK_DESCRIPTIONS[6]} />
+
+      {weekEfficiencies.length >= 2 && (
+        <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 14, padding: 20, marginBottom: 20 }}>
+          <h4 style={{ color: "#a89fe8", margin: "0 0 16px", fontSize: 15 }}>📈 Динамика эффективности сна</h4>
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={weekEfficiencies}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+              <XAxis dataKey="week" stroke="#666" fontSize={12} />
+              <YAxis domain={[50, 100]} stroke="#666" fontSize={12} unit="%" />
+              <Tooltip contentStyle={{ background: "#1a1830", border: "1px solid #7c6fcd", borderRadius: 8, color: "#e8e4f5" }} />
+              <Line type="monotone" dataKey="avg" stroke="#7c6fcd" strokeWidth={2.5} dot={{ fill: "#7c6fcd", r: 5 }} name="Эффективность" />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      <SectionTitle>📓 Дневник сна — неделя 6</SectionTitle>
+      {[1,2,3,4,5,6,7].map(d => (
+        <div key={d} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: 16, marginBottom: 12 }}>
+          <p style={{ color: "#a89fe8", fontWeight: 600, margin: "0 0 10px" }}>День {d}</p>
+          <DiaryForm day={d} existing={diary[d]} onSave={saveDiaryDay} />
+        </div>
+      ))}
+
+      <AIBlock weekN={6} allWeeksData={allData} profile={profile} onResultReady={setAiResult} />
+
+      {aiResult && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ background: "rgba(176,90,158,0.08)", border: "1px solid rgba(176,90,158,0.2)", borderRadius: 14, padding: 20, marginBottom: 14, textAlign: "center" }}>
+            <p style={{ color: "#d09ac0", fontSize: 15, fontWeight: 600, margin: "0 0 6px" }}>🏆 Вы прошли 6-недельную программу</p>
+            <p style={{ color: "#8888aa", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+              CBT-I — единственный метод с доказанной долгосрочной эффективностью при хронической бессоннице. Вы сделали реальную работу.
+            </p>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            {!showText ? (
+              <button onClick={() => setShowText(true)}
+                style={{ width: "100%", padding: "14px", borderRadius: 12, background: "linear-gradient(135deg, #2d6a4f, #1d9e75)", border: "none", color: "#fff", fontWeight: 700, fontSize: 15, cursor: "pointer", boxShadow: "0 4px 20px rgba(29,158,117,0.35)", fontFamily: "inherit" }}>
+                📄 Получить отчёт для сохранения
+              </button>
+            ) : (
+              <div>
+                <p style={{ color: "#8888aa", fontSize: 12, marginBottom: 8, lineHeight: 1.6 }}>
+                  Выделите весь текст (Ctrl+A или долгое нажатие) → скопируйте → вставьте в Word, Google Docs или Notes.
+                </p>
+                <textarea
+                  readOnly
+                  value={getReportText()}
+                  rows={16}
+                  style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 10, padding: "14px", color: "#d0cce8", fontSize: 13, lineHeight: 1.7, resize: "vertical", fontFamily: "monospace", boxSizing: "border-box" }}
+                  onClick={e => e.target.select()}
+                />
+                <button
+                  onClick={() => { navigator.clipboard?.writeText(getReportText()).catch(() => {}); }}
+                  style={{ marginTop: 8, width: "100%", padding: "11px", borderRadius: 10, background: "rgba(29,158,117,0.15)", border: "1px solid rgba(29,158,117,0.3)", color: "#4ca88a", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>
+                  Скопировать в буфер обмена
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── reusable UI ───────────────────────────────────────────────────────────
+function InfoCard({ text }) {
+  return (
+    <div style={{ background: "rgba(168,159,232,0.08)", borderLeft: "3px solid #7c6fcd", borderRadius: "0 10px 10px 0", padding: "12px 16px", marginBottom: 20 }}>
+      <p style={{ color: "#b8b0e0", fontSize: 13, lineHeight: 1.7, margin: 0 }}>{text}</p>
+    </div>
+  );
+}
+
+function SectionTitle({ children }) {
+  return <h3 style={{ color: "#a89fe8", fontSize: 16, fontWeight: 700, margin: "0 0 14px" }}>{children}</h3>;
+}
+
+// ─── Progress bars ─────────────────────────────────────────────────────────
+function ProgressBar({ value, max, color = "#7c6fcd", label }) {
+  const pct = Math.round((value / max) * 100);
+  return (
+    <div style={{ marginBottom: 8 }}>
+      {label && <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+        <span style={{ fontSize: 12, color: "#8888aa" }}>{label}</span>
+        <span style={{ fontSize: 12, color: "#a89fe8" }}>{pct}%</span>
+      </div>}
+      <div style={{ height: 6, background: "rgba(255,255,255,0.08)", borderRadius: 3, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${pct}%`, background: `linear-gradient(90deg, ${color}, ${color}cc)`, borderRadius: 3, transition: "width 0.5s ease" }} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Onboarding ────────────────────────────────────────────────────────────
+function Onboarding({ onComplete }) {
+  const [step, setStep] = useState(0);
+  const [name, setName] = useState("");
+  const [age, setAge] = useState("");
+  const [device, setDevice] = useState("");
+
+  const iStyle = {
+    width: "100%", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)",
+    borderRadius: 10, padding: "12px 16px", color: "#e8e4f5", fontSize: 16, fontFamily: "inherit",
+    boxSizing: "border-box", outline: "none",
+  };
+
+  const ageNum = parseInt(age);
+  const ageContext = !age ? null
+    : ageNum < 40 ? { color: "#5b8dee", text: "До 40 лет нарушения сна чаще связаны со стрессом и образом жизни, чем с гормональными изменениями." }
+    : ageNum <= 45 ? { color: "#6a9f5c", text: "40–45 лет — возможное начало перименопаузы. Гормональные колебания уже могут влиять на архитектуру сна." }
+    : ageNum <= 52 ? { color: "#c47f3a", text: "45–52 лет — активная перименопауза. Снижение прогестерона и эстрогена напрямую нарушает фазы сна. Вы в правильном месте." }
+    : { color: "#b05a9e", text: "После 52 лет — постменопауза. Нарушения сна в этом возрасте хорошо поддаются CBT-I, даже если они длятся годами." };
+
+  const [contraOk, setContraOk] = useState(false);
+  const [termsOk, setTermsOk] = useState(false);
+  const [privacyOk, setPrivacyOk] = useState(false);
+  const [termsOpen, setTermsOpen] = useState(false);
+
+  const CONTRAINDICATIONS_HARD = [
+    "Апноэ сна или другое дыхательное расстройство во сне — CBT-I без лечения апноэ неэффективен и может усугубить гипоксию",
+    "Острое психотическое состояние",
+    "Эпилепсия — техника ограничения сна может провоцировать приступы",
+  ];
+
+  const CONTRAINDICATIONS_CAUTION = [
+    "Депрессия или тревожное расстройство — CBT-I эффективен, но желателен параллельный контроль врача или психотерапевта",
+    "Беременность — техника ограничения сна (неделя 2) не рекомендована; проконсультируйтесь с врачом перед началом",
+    "Приём снотворных или психотропных препаратов, назначенных врачом — обсудите с врачом совместимость с программой",
+    "Биполярное расстройство — депривация сна может спровоцировать маниакальный эпизод; только под наблюдением специалиста",
+  ];
+
+  const PRIVACY = `СОГЛАСИЕ НА ОБРАБОТКУ ПЕРСОНАЛЬНЫХ ДАННЫХ
+
+В соответствии с законодательством Грузии о персональных данных (2011 г.) и Регламентом ЕС о защите данных (GDPR):
+
+1. КАКИЕ ДАННЫЕ СОБИРАЮТСЯ
+— Имя (или псевдоним) и возраст
+— Адрес электронной почты (при авторизации через Google)
+— Данные дневника сна: время засыпания, пробуждения, оценки качества сна, сопутствующие симптомы
+
+2. КАК И ГДЕ ХРАНЯТСЯ ДАННЫЕ
+Данные хранятся в защищённом облачном хранилище и привязаны к вашей учётной записи Google. Это позволяет синхронизировать данные между устройствами. Доступ к данным есть только у вас.
+
+3. ПЕРЕДАЧА ДАННЫХ ДЛЯ AI-АНАЛИЗА
+При запросе анализа данные дневника сна передаются в Anthropic API (США) для обработки языковой моделью. Передача осуществляется без прямой привязки к вашим личным данным (имени, email).
+
+4. АВТОРИЗАЦИЯ ЧЕРЕЗ GOOGLE
+Для входа в программу используется Google OAuth 2.0. Мы получаем только email и имя профиля Google — для идентификации учётной записи. Пароль Google нам не передаётся и не хранится.
+
+5. ЦЕЛЬ ОБРАБОТКИ
+Персонализация образовательной программы, формирование рекомендаций, синхронизация данных между устройствами.
+
+6. ПРАВА ПОЛЬЗОВАТЕЛЯ
+Вы вправе в любой момент запросить удаление всех своих данных, написав на perezagruzka48@gmail.com. Данные будут удалены в течение 30 дней.
+
+7. ТРЕТЬИ СТОРОНЫ
+Данные не передаются и не продаются третьим лицам в маркетинговых целях.`;
+
+  const TERMS = `ПОЛЬЗОВАТЕЛЬСКОЕ СОГЛАШЕНИЕ
+Программа улучшения сна в менопаузе
+
+1. СТАТУС ПРОДУКТА
+Настоящая программа является образовательным продуктом и не является медицинской услугой, медицинским изделием или средством диагностики и лечения заболеваний.
+
+2. ОГРАНИЧЕНИЕ ОТВЕТСТВЕННОСТИ
+Автор программы не несёт ответственности за последствия самостоятельного применения описанных техник. Результаты программы индивидуальны и не гарантированы.
+
+3. РЕКОМЕНДАЦИЯ
+Перед началом программы рекомендуется проконсультироваться с врачом, особенно при наличии хронических заболеваний или приёме лекарственных препаратов.
+
+4. СОГЛАСИЕ
+Нажимая кнопку «Начать программу», пользователь подтверждает, что ознакомился с настоящим соглашением, понимает образовательный характер продукта и принимает на себя ответственность за самостоятельное применение материалов программы.
+
+5. ПЕРСОНАЛЬНЫЕ ДАННЫЕ
+Все данные, вводимые в программу (имя, возраст, данные дневника сна), хранятся локально на устройстве пользователя и не передаются третьим лицам.`;
+
+  const legalOk = contraOk && termsOk && privacyOk;
+
+  const steps = [
+    // Step 0 — welcome
+    <div key={0}>
+      <div style={{ textAlign: "center", padding: "20px 0 28px" }}>
+        <div style={{ fontSize: 52, marginBottom: 16 }}>🌙</div>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: "#e8e4f5", margin: "0 0 12px", lineHeight: 1.3 }}>Программа улучшения сна в менопаузе</h2>
+        <p style={{ color: "#9090b8", fontSize: 14, lineHeight: 1.8, margin: "0 0 8px" }}>6 недель · CBT-I протокол · AI-анализ</p>
+      </div>
+      <div style={{ background: "rgba(124,111,205,0.08)", border: "1px solid rgba(124,111,205,0.2)", borderRadius: 14, padding: 20, marginBottom: 24 }}>
+        <p style={{ color: "#c8c0f0", fontSize: 14, lineHeight: 1.8, margin: 0 }}>
+          <b style={{ color: "#a89fe8" }}>CBT-I</b> (когнитивно-поведенческая терапия бессонницы) — единственный метод с доказанной долгосрочной эффективностью. В отличие от снотворных, он устраняет причину, а не симптом.
+          <br /><br />
+          Программа состоит из 6 недель. Каждая неделя — новая техника, которая строится на предыдущей. <b style={{ color: "#a89fe8" }}>Важно идти последовательно.</b>
+        </p>
+      </div>
+      <button onClick={() => setStep(1)} style={{ width: "100%", padding: 14, borderRadius: 12, background: "linear-gradient(135deg, #7c6fcd, #5b8dee)", border: "none", color: "#fff", fontWeight: 700, fontSize: 16, cursor: "pointer", fontFamily: "inherit" }}>
+        Далее →
+      </button>
+    </div>,
+
+    // Step 1 — legal consent
+    <div key={1}>
+      <h3 style={{ color: "#a89fe8", fontSize: 18, margin: "0 0 6px" }}>Перед началом</h3>
+      <p style={{ color: "#7070a0", fontSize: 12, margin: "0 0 20px", lineHeight: 1.6 }}>Два подтверждения — обязательны для доступа к программе.</p>
+
+      <div style={{ background: "rgba(196,127,58,0.07)", border: "1px solid rgba(196,127,58,0.2)", borderRadius: 14, padding: 18, marginBottom: 16 }}>
+        <p style={{ color: "#c47f3a", fontWeight: 600, fontSize: 13, margin: "0 0 10px" }}>Противопоказания</p>
+        <p style={{ color: "#8888aa", fontSize: 12, lineHeight: 1.6, margin: "0 0 8px" }}>
+          <b style={{ color: "#e07060" }}>Не рекомендуется</b> при следующих состояниях:
+        </p>
+        {CONTRAINDICATIONS_HARD.map((c, i) => (
+          <div key={i} style={{ display: "flex", gap: 10, padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+            <span style={{ color: "#e07060", fontSize: 13, flexShrink: 0, marginTop: 1 }}>✕</span>
+            <span style={{ color: "#b0a080", fontSize: 13, lineHeight: 1.5 }}>{c}</span>
+          </div>
+        ))}
+        <p style={{ color: "#8888aa", fontSize: 12, lineHeight: 1.6, margin: "14px 0 8px" }}>
+          <b style={{ color: "#c47f3a" }}>С осторожностью</b> — проконсультируйтесь с врачом перед началом:
+        </p>
+        {CONTRAINDICATIONS_CAUTION.map((c, i) => (
+          <div key={i} style={{ display: "flex", gap: 10, padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+            <span style={{ color: "#c47f3a", fontSize: 13, flexShrink: 0, marginTop: 1 }}>⚠</span>
+            <span style={{ color: "#b0a080", fontSize: 13, lineHeight: 1.5 }}>{c}</span>
+          </div>
+        ))}
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 12, marginTop: 18, cursor: "pointer" }}>
+          <div onClick={() => setContraOk(v => !v)} style={{
+            width: 22, height: 22, minWidth: 22, borderRadius: 6, marginTop: 1,
+            border: `2px solid ${contraOk ? "#1d9e75" : "rgba(255,255,255,0.2)"}`,
+            background: contraOk ? "#1d9e75" : "transparent",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {contraOk && <span style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>✓</span>}
+          </div>
+          <span style={{ fontSize: 13, color: "#c8c0f0", lineHeight: 1.6 }}>
+            Подтверждаю, что ни одно из состояний в разделе «Не рекомендуется» ко мне не относится. При наличии состояний из раздела «С осторожностью» я проконсультируюсь с врачом.
+          </span>
+        </label>
+      </div>
+
+      <div style={{ background: "rgba(29,158,117,0.06)", border: "1px solid rgba(29,158,117,0.2)", borderRadius: 14, padding: 18, marginBottom: 16 }}>
+        <p style={{ color: "#4ca88a", fontWeight: 600, fontSize: 13, margin: "0 0 10px" }}>Согласие на обработку персональных данных</p>
+        <button onClick={() => setTermsOpen(v => v === "privacy" ? false : "privacy")}
+          style={{ background: "transparent", border: "none", color: "#4ca88a", fontSize: 13, cursor: "pointer", padding: 0, fontFamily: "inherit", marginBottom: 10, textDecoration: "underline" }}>
+          {termsOpen === "privacy" ? "Скрыть текст ↑" : "Прочитать →"}
+        </button>
+        {termsOpen === "privacy" && (
+          <div style={{ background: "rgba(0,0,0,0.2)", borderRadius: 10, padding: "14px", marginBottom: 14, maxHeight: 200, overflowY: "auto" }}>
+            <pre style={{ color: "#8888aa", fontSize: 12, lineHeight: 1.7, margin: 0, whiteSpace: "pre-wrap", fontFamily: "inherit" }}>{PRIVACY}</pre>
+          </div>
+        )}
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer" }}>
+          <div onClick={() => setPrivacyOk(v => !v)} style={{
+            width: 22, height: 22, minWidth: 22, borderRadius: 6, marginTop: 1,
+            border: `2px solid ${privacyOk ? "#1d9e75" : "rgba(255,255,255,0.2)"}`,
+            background: privacyOk ? "#1d9e75" : "transparent",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {privacyOk && <span style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>✓</span>}
+          </div>
+          <span style={{ fontSize: 13, color: "#c8c0f0", lineHeight: 1.6 }}>
+            Я даю согласие на обработку персональных данных в указанных целях
+          </span>
+        </label>
+      </div>
+
+      <div style={{ background: "rgba(124,111,205,0.06)", border: "1px solid rgba(124,111,205,0.2)", borderRadius: 14, padding: 18, marginBottom: 20 }}>
+        <p style={{ color: "#a89fe8", fontWeight: 600, fontSize: 13, margin: "0 0 10px" }}>Пользовательское соглашение</p>
+        <button onClick={() => setTermsOpen(v => v === "terms" ? false : "terms")}
+          style={{ background: "transparent", border: "none", color: "#7c6fcd", fontSize: 13, cursor: "pointer", padding: 0, fontFamily: "inherit", marginBottom: 10, textDecoration: "underline" }}>
+          {termsOpen === "terms" ? "Скрыть текст соглашения ↑" : "Прочитать соглашение →"}
+        </button>
+        {termsOpen === "terms" && (
+          <div style={{ background: "rgba(0,0,0,0.2)", borderRadius: 10, padding: "14px", marginBottom: 14, maxHeight: 200, overflowY: "auto" }}>
+            <pre style={{ color: "#8888aa", fontSize: 12, lineHeight: 1.7, margin: 0, whiteSpace: "pre-wrap", fontFamily: "inherit" }}>{TERMS}</pre>
+          </div>
+        )}
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer" }}>
+          <div onClick={() => setTermsOk(v => !v)} style={{
+            width: 22, height: 22, minWidth: 22, borderRadius: 6, marginTop: 1,
+            border: `2px solid ${termsOk ? "#7c6fcd" : "rgba(255,255,255,0.2)"}`,
+            background: termsOk ? "#7c6fcd" : "transparent",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {termsOk && <span style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>✓</span>}
+          </div>
+          <span style={{ fontSize: 13, color: "#c8c0f0", lineHeight: 1.6 }}>
+            Я прочитала и принимаю условия соглашения. Понимаю, что программа носит образовательный характер и не является медицинской услугой.
+          </span>
+        </label>
+      </div>
+
+      <button onClick={() => legalOk && setStep(2)} disabled={!legalOk}
+        style={{ width: "100%", padding: 14, borderRadius: 12, background: legalOk ? "linear-gradient(135deg, #7c6fcd, #5b8dee)" : "rgba(255,255,255,0.05)", border: "none", color: legalOk ? "#fff" : "#555", fontWeight: 700, fontSize: 15, cursor: legalOk ? "pointer" : "not-allowed", fontFamily: "inherit" }}>
+        Подтвердить и продолжить →
+      </button>
+      <p style={{ color: "#444466", fontSize: 11, textAlign: "center", marginTop: 12, lineHeight: 1.6 }}>
+        Постановка обеих галочек является акцептом оферты и равнозначна подписанию соглашения.
+      </p>
+    </div>,
+
+    // Step 2 — name
+    <div key={1}>
+      <h3 style={{ color: "#a89fe8", fontSize: 18, margin: "0 0 8px" }}>Как вас зовут?</h3>
+      <p style={{ color: "#8888aa", fontSize: 13, margin: "0 0 20px", lineHeight: 1.6 }}>AI будет обращаться к вам по имени в анализах. Это делает рекомендации более личными.</p>
+      <input value={name} onChange={e => setName(e.target.value)} placeholder="Ваше имя" style={iStyle} autoFocus />
+      <button onClick={() => name.trim() && setStep(3)} disabled={!name.trim()}
+        style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, background: name.trim() ? "linear-gradient(135deg, #7c6fcd, #5b8dee)" : "rgba(255,255,255,0.05)", border: "none", color: name.trim() ? "#fff" : "#555", fontWeight: 700, fontSize: 15, cursor: name.trim() ? "pointer" : "not-allowed", fontFamily: "inherit" }}>
+        Далее →
+      </button>
+    </div>,
+
+    // Step 3 — age
+    <div key={2}>
+      <h3 style={{ color: "#a89fe8", fontSize: 18, margin: "0 0 8px" }}>Сколько вам лет?</h3>
+      <p style={{ color: "#8888aa", fontSize: 13, margin: "0 0 20px", lineHeight: 1.6 }}>Возраст помогает AI понять, насколько нарушения сна связаны с гормональными изменениями менопаузы.</p>
+      <input type="number" value={age} onChange={e => setAge(e.target.value)} placeholder="Например: 49" min="30" max="70" style={iStyle} />
+      {ageContext && (
+        <div style={{ marginTop: 12, background: `${ageContext.color}18`, border: `1px solid ${ageContext.color}40`, borderRadius: 10, padding: "12px 16px" }}>
+          <p style={{ color: ageContext.color, fontSize: 13, lineHeight: 1.6, margin: 0 }}>{ageContext.text}</p>
+        </div>
+      )}
+      <button onClick={() => age && setStep(4)} disabled={!age}
+        style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, background: age ? "linear-gradient(135deg, #7c6fcd, #5b8dee)" : "rgba(255,255,255,0.05)", border: "none", color: age ? "#fff" : "#555", fontWeight: 700, fontSize: 15, cursor: age ? "pointer" : "not-allowed", fontFamily: "inherit" }}>
+        Далее →
+      </button>
+    </div>,
+
+    // Step 4 — device
+    <div key={3}>
+      <h3 style={{ color: "#a89fe8", fontSize: 18, margin: "0 0 8px" }}>Есть ли у вас трекер сна?</h3>
+      <p style={{ color: "#8888aa", fontSize: 13, margin: "0 0 16px", lineHeight: 1.6 }}>
+        Данные из Garmin, Apple Watch, Oura Ring или других устройств можно вносить вручную — они дают более точную картину.
+      </p>
+      {[
+        ["garmin", "Garmin / Polar", "Данные: «Начало сна», «Пробуждения», «Длительность сна» в приложении Garmin Connect → раздел Сон."],
+        ["apple", "Apple Watch / iPhone", "Данные: Здоровье → Сон → выберите дату → «Время в постели» и «Время сна»."],
+        ["oura", "Oura Ring", "Самые точные данные о фазах. В приложении: вкладка Sleep → все нужные метрики."],
+        ["other", "Другой трекер", "Ищите в приложении: «латентность сна» (время засыпания), «пробуждения», «эффективность сна»."],
+        ["none", "Нет трекера — оцениваю сам", "Это нормально. Субъективная оценка для CBT-I работает: важна динамика, а не точные цифры. Засыпание: вспомните последнее время, которое видели на часах — отсчитайте от него."],
+      ].map(([val, label, hint]) => (
+        <div key={val} onClick={() => setDevice(val)}
+          style={{ marginBottom: 10, background: device === val ? "rgba(124,111,205,0.15)" : "rgba(255,255,255,0.03)", border: `1px solid ${device === val ? "#7c6fcd" : "rgba(255,255,255,0.08)"}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${device === val ? "#7c6fcd" : "rgba(255,255,255,0.2)"}`, background: device === val ? "#7c6fcd" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              {device === val && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff" }} />}
+            </div>
+            <span style={{ color: device === val ? "#e8e4f5" : "#a0a0c0", fontWeight: device === val ? 600 : 400, fontSize: 14 }}>{label}</span>
+          </div>
+          {device === val && <p style={{ color: "#8888b8", fontSize: 12, lineHeight: 1.6, margin: "10px 0 0 28px" }}>{hint}</p>}
+        </div>
+      ))}
+      <button onClick={() => device && setStep(5)} disabled={!device}
+        style={{ marginTop: 8, width: "100%", padding: 14, borderRadius: 12, background: device ? "linear-gradient(135deg, #7c6fcd, #5b8dee)" : "rgba(255,255,255,0.05)", border: "none", color: device ? "#fff" : "#555", fontWeight: 700, fontSize: 15, cursor: device ? "pointer" : "not-allowed", fontFamily: "inherit" }}>
+        Далее →
+      </button>
+    </div>,
+
+    // Step 5 — rules
+    <div key={4}>
+      <h3 style={{ color: "#a89fe8", fontSize: 18, margin: "0 0 16px" }}>Как устроена программа</h3>
+      {[
+        ["🔍", "Неделя 1 — диагностика", "7 дней дневника сна. Не нужно ничего менять — только наблюдать и записывать. Чем больше дней заполнено, тем точнее AI определит тип нарушения. Идеально — все 7, минимум — 5."],
+        ["⏰", "Недели 2–5 — техники", "Каждую неделю добавляется одна техника CBT-I. Они строятся последовательно — пропускать недели не рекомендуется."],
+        ["📊", "AI-анализ", "Появляется после заполнения достаточного числа дней. AI анализирует именно ваши данные, учитывает возраст и особенности менопаузы."],
+        ["🚶", "Темп — ваш", "Если неделя затянулась — ничего страшного. CBT-I работает даже при медленном темпе. Главное — не бросать."],
+      ].map(([icon, title, desc]) => (
+        <div key={title} style={{ display: "flex", gap: 14, padding: "12px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <span style={{ fontSize: 22, flexShrink: 0, marginTop: 2 }}>{icon}</span>
+          <div>
+            <p style={{ color: "#c8c0f0", fontWeight: 600, fontSize: 14, margin: "0 0 4px" }}>{title}</p>
+            <p style={{ color: "#8888a8", fontSize: 13, lineHeight: 1.6, margin: 0 }}>{desc}</p>
+          </div>
+        </div>
+      ))}
+      <button onClick={() => onComplete({ name: name.trim(), age, device })}
+        style={{ marginTop: 24, width: "100%", padding: 16, borderRadius: 12, background: "linear-gradient(135deg, #7c6fcd, #5b8dee)", border: "none", color: "#fff", fontWeight: 700, fontSize: 16, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 4px 24px rgba(124,111,205,0.4)" }}>
+        Начать неделю 1 →
+      </button>
+    </div>,
+  ];
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#0d0b1a", color: "#e8e4f5", fontFamily: "'Georgia', 'Times New Roman', serif" }}>
+      <style>{`* { box-sizing: border-box; } input:focus { border-color: #7c6fcd !important; }`}</style>
+      <div style={{ maxWidth: 520, margin: "0 auto", padding: "24px 20px 60px" }}>
+        {step > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
+            <button onClick={() => setStep(s => s - 1)} style={{ background: "transparent", border: "none", color: "#7070a0", cursor: "pointer", fontSize: 13, padding: 0, fontFamily: "inherit" }}>← назад</button>
+            <div style={{ flex: 1, display: "flex", gap: 4 }}>
+              {[1,2,3,4,5].map(i => (
+                <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: i <= step ? "#7c6fcd" : "rgba(255,255,255,0.08)", transition: "background 0.3s" }} />
+              ))}
+            </div>
+          </div>
+        )}
+        {steps[step]}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main App ──────────────────────────────────────────────────────────────
+function SleepProgram() {
+  const [state, setState] = useState(() => load());
+  const [currentWeek, setCurrentWeek] = useState(1);
+
+  const profile = state.profile || null;
+
+  const completeOnboarding = (profileData) => {
+    const next = { ...state, profile: profileData };
+    setState(next);
+    save(next);
+  };
+
+  const weekData = (n) => state[`w${n}`] || {};
+  const setWeekData = (n) => (data) => {
+    const next = { ...state, [`w${n}`]: data };
+    setState(next);
+    save(next);
+  };
+
+  const totalDays = Object.entries(state).filter(([k]) => k.startsWith("w")).reduce((sum, [, wd]) => sum + Object.keys(wd.diary || {}).length, 0);
+  const totalProgress = Math.min(Math.round((totalDays / 42) * 100), 100);
+
+  const allWeeksData = {};
+  for (let i = 1; i <= 6; i++) allWeeksData[i] = weekData(i);
+
+  const reset = () => {
+    if (window.confirm("Сбросить все данные программы?")) {
+      localStorage.removeItem(LS_KEY);
+      setState({});
+      setCurrentWeek(1);
+    }
+  };
+
+  const weekDays = (n) => Object.keys(weekData(n).diary || {}).length;
+
+  // Show onboarding if no profile yet
+  if (!profile) return <Onboarding onComplete={completeOnboarding} />;
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#0d0b1a", color: "#e8e4f5", fontFamily: "'Georgia', 'Times New Roman', serif" }}>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        * { box-sizing: border-box; }
+        input[type=range] { -webkit-appearance: none; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.1); }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #7c6fcd; cursor: pointer; }
+        input[type=time]::-webkit-calendar-picker-indicator { filter: invert(0.7); }
+        textarea { font-family: inherit; }
+        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #0d0b1a; } ::-webkit-scrollbar-thumb { background: #3a3060; border-radius: 3px; }
+      `}</style>
+
+      {/* Header */}
+      <div style={{ background: "linear-gradient(180deg, #1a1530 0%, #0d0b1a 100%)", borderBottom: "1px solid rgba(124,111,205,0.15)", padding: "16px 16px 14px" }}>
+        <div style={{ maxWidth: 600, margin: "0 auto" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: "linear-gradient(135deg, #1a1550, #2d1b69)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, border: "1px solid rgba(124,111,205,0.3)" }}>🌙</div>
+            <div style={{ flex: 1 }}>
+              <h1 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: "#e8e4f5" }}>Сон в менопаузе</h1>
+              <p style={{ fontSize: 12, color: "#7070a0", margin: 0 }}>{profile.name}, {profile.age} лет · CBT-I программа</p>
+            </div>
+          </div>
+          <ProgressBar value={totalProgress} max={100} label={`Прогресс — ${totalDays}/42 дней`} />
+        </div>
+      </div>
+
+      {/* Week tabs */}
+      <div style={{ maxWidth: 600, margin: "0 auto", padding: "0 16px" }}>
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "14px 0", scrollbarWidth: "none" }}>
+          {WEEKS.map(w => {
+            const active = currentWeek === w.n;
+            const days = weekDays(w.n);
+            return (
+              <button key={w.n} onClick={() => setCurrentWeek(w.n)}
+                style={{
+                  flex: "0 0 auto", padding: "8px 14px", borderRadius: 10,
+                  background: active ? `linear-gradient(135deg, ${w.color}40, ${w.color}20)` : "rgba(255,255,255,0.04)",
+                  border: `1px solid ${active ? w.color : "rgba(255,255,255,0.08)"}`,
+                  color: active ? "#fff" : "#8888aa", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400,
+                  whiteSpace: "nowrap", fontFamily: "inherit",
+                }}>
+                <span style={{ marginRight: 5 }}>{w.icon}</span>
+                Нед.{w.n}
+                {days > 0 && <span style={{ marginLeft: 6, background: active ? w.color : "rgba(255,255,255,0.1)", borderRadius: 10, padding: "1px 6px", fontSize: 11 }}>{days}</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Week header */}
+        <div style={{ background: `linear-gradient(135deg, ${WEEKS[currentWeek-1].color}15, transparent)`, border: `1px solid ${WEEKS[currentWeek-1].color}30`, borderRadius: 14, padding: "16px 18px", marginBottom: 20 }}>
+          <h2 style={{ margin: "0 0 8px", fontSize: 18, color: "#e8e4f5" }}>
+            {WEEKS[currentWeek-1].icon} Неделя {currentWeek}: {WEEKS[currentWeek-1].title}
+          </h2>
+          <ProgressBar value={weekDays(currentWeek)} max={7} color={WEEKS[currentWeek-1].color} label={`${weekDays(currentWeek)} из 7 дней заполнено`} />
+        </div>
+
+        {/* Week content — pass profile to all weeks for AI personalization */}
+        {currentWeek === 1 && <Week1 data={weekData(1)} setData={setWeekData(1)} profile={profile} onNextWeek={() => setCurrentWeek(2)} />}
+        {currentWeek === 2 && <Week2 data={weekData(2)} setData={setWeekData(2)} profile={profile} onNextWeek={() => setCurrentWeek(3)} />}
+        {currentWeek === 3 && <Week3 data={weekData(3)} setData={setWeekData(3)} profile={profile} onNextWeek={() => setCurrentWeek(4)} />}
+        {currentWeek === 4 && <Week4 data={weekData(4)} setData={setWeekData(4)} profile={profile} onNextWeek={() => setCurrentWeek(5)} />}
+        {currentWeek === 5 && <Week5 data={weekData(5)} setData={setWeekData(5)} profile={profile} onNextWeek={() => setCurrentWeek(6)} />}
+        {currentWeek === 6 && <Week6 allData={allWeeksData} profile={profile} data={weekData(6)} setData={setWeekData(6)} />}
+
+        {/* Footer */}
+        <div style={{ marginTop: 32, paddingTop: 20, borderTop: "1px solid rgba(255,255,255,0.06)", paddingBottom: 40 }}>
+          <p style={{ fontSize: 11, color: "#555577", textAlign: "center", lineHeight: 1.6, margin: "0 0 16px" }}>{DISCLAIMER}</p>
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <button onClick={() => {
+            const next = { ...state };
+            delete next.profile;
+            setState(next);
+            save(next);
+          }} style={{ background: "transparent", border: "1px solid rgba(124,111,205,0.2)", borderRadius: 8, padding: "8px 20px", color: "#7070a0", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+            Изменить профиль
+          </button>
+        </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(SleepProgram));
+</script>
+</body>
+</html>
