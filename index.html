@@ -351,17 +351,17 @@ window.PropTypes = {
 //# sourceMappingURL=Recharts.js.map
 </script>
 <script>
-function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
-function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { _defineProperty(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
-function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
-function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == typeof i ? i : i + ""; }
-function _toPrimitive(t, r) { if ("object" != typeof t || !t) return t; var e = t[Symbol.toPrimitive]; if (void 0 !== e) { var i = e.call(t, r || "default"); if ("object" != typeof i) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === r ? String : Number)(t); }
 function _slicedToArray(r, e) { return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest(); }
 function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
 function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return _arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0; } }
 function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
 function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t.return && (u = t.return(), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
 function _arrayWithHoles(r) { if (Array.isArray(r)) return r; }
+function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
+function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { _defineProperty(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
+function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
+function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == typeof i ? i : i + ""; }
+function _toPrimitive(t, r) { if ("object" != typeof t || !t) return t; var e = t[Symbol.toPrimitive]; if (void 0 !== e) { var i = e.call(t, r || "default"); if ("object" != typeof i) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === r ? String : Number)(t); }
 var useState = React.useState;
 var useEffect = React.useEffect;
 var LineChart = window.Recharts.LineChart;
@@ -431,7 +431,50 @@ const WEEK_DESCRIPTIONS = {
   6: "Последняя неделя — просто наблюдайте за сном без новых техник. Ведите дневник как обычно. AI проанализирует всю динамику за 6 недель и составит персональный план поддержания результата."
 };
 
-// ─── AI call ───────────────────────────────────────────────────────────────
+// ─── Limits ────────────────────────────────────────────────────────────────
+const EXPIRY_DAYS = 90;
+function getExpiry(state) {
+  if (!state.startDate) return null;
+  const start = new Date(state.startDate);
+  start.setDate(start.getDate() + EXPIRY_DAYS);
+  return start;
+}
+function isExpired(state) {
+  const expiry = getExpiry(state);
+  return expiry ? new Date() > expiry : false;
+}
+function daysLeft(state) {
+  const expiry = getExpiry(state);
+  if (!expiry) return EXPIRY_DAYS;
+  const diff = Math.ceil((expiry - new Date()) / (1000 * 60 * 60 * 24));
+  return Math.max(0, diff);
+}
+function canRunAnalysis(state, weekN) {
+  if (weekN === 6) {
+    const count = state.finalAnalysisCount || 0;
+    return count < 2;
+  }
+  const lastTs = state["lastAnalysis_w".concat(weekN)];
+  if (!lastTs) return true;
+  const daysSince = (Date.now() - lastTs) / (1000 * 60 * 60 * 24);
+  return daysSince >= 5;
+}
+function recordAnalysis(state, weekN) {
+  if (weekN === 6) {
+    return _objectSpread(_objectSpread({}, state), {}, {
+      finalAnalysisCount: (state.finalAnalysisCount || 0) + 1
+    });
+  }
+  return _objectSpread(_objectSpread({}, state), {}, {
+    ["lastAnalysis_w".concat(weekN)]: Date.now()
+  });
+}
+function nextAnalysisIn(state, weekN) {
+  const lastTs = state["lastAnalysis_w".concat(weekN)];
+  if (!lastTs) return 0;
+  const daysSince = (Date.now() - lastTs) / (1000 * 60 * 60 * 24);
+  return Math.ceil(5 - daysSince);
+}
 async function callAI(prompt) {
   var _data$content;
   let maxTokens = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 1000;
@@ -690,7 +733,9 @@ function AIBlock(_ref9) {
     allWeeksData = _ref9.allWeeksData,
     profile = _ref9.profile,
     onNextWeek = _ref9.onNextWeek,
-    onResultReady = _ref9.onResultReady;
+    onResultReady = _ref9.onResultReady,
+    appState = _ref9.appState,
+    onStateUpdate = _ref9.onStateUpdate;
   const _useState3 = useState(""),
     _useState4 = _slicedToArray(_useState3, 2),
     result = _useState4[0],
@@ -726,6 +771,11 @@ function AIBlock(_ref9) {
       const text = await callAI(buildPrompt(), weekN === 6 ? 2500 : 1000);
       setResult(text);
       if (onResultReady) onResultReady(text);
+      if (onStateUpdate) onStateUpdate(s => {
+        const next = recordAnalysis(s, weekN);
+        save(next);
+        return next;
+      });
     } catch (e) {
       setErr("Ошибка соединения с AI. Проверьте интернет и попробуйте снова.");
     } finally {
@@ -733,14 +783,38 @@ function AIBlock(_ref9) {
     }
   };
   const filledDays = diaryData ? Object.keys(diaryData).length : 0;
-  const canAnalyze = weekN === 1 ? filledDays >= 5 : weekN === 6 ? true : filledDays >= 4;
+  const hasEnoughDays = weekN === 1 ? filledDays >= 5 : weekN === 6 ? true : filledDays >= 5;
+  const limitOk = appState ? canRunAnalysis(appState, weekN) : true;
+  const canAnalyze = hasEnoughDays && limitOk;
+
+  // message for disabled state
+  let disabledMsg = "";
+  if (!hasEnoughDays) {
+    disabledMsg = "\u0417\u0430\u043F\u043E\u043B\u043D\u0438\u0442\u0435 \u0435\u0449\u0451 ".concat(5 - filledDays, " \u0434\u043D.");
+  } else if (!limitOk && weekN !== 6) {
+    const wait = appState ? nextAnalysisIn(appState, weekN) : 0;
+    disabledMsg = "\u041F\u043E\u0432\u0442\u043E\u0440 \u0447\u0435\u0440\u0435\u0437 ".concat(wait, " \u0434\u043D.");
+  } else if (!limitOk && weekN === 6) {
+    disabledMsg = "Использовано 2 из 2 анализов";
+  }
+
+  // repeat availability hint for weeks 1-5
+  const canRepeat = weekN !== 6 && filledDays >= 7 && appState && !canRunAnalysis(appState, weekN);
+  const repeatReady = weekN !== 6 && filledDays >= 7 && appState && canRunAnalysis(appState, weekN) && result;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 20,
       borderTop: "1px solid rgba(255,255,255,0.1)",
       paddingTop: 20
     }
-  }, /*#__PURE__*/React.createElement("button", {
+  }, weekN !== 6 && filledDays >= 5 && filledDays < 7 && /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "#7070a0",
+      fontSize: 12,
+      marginBottom: 10,
+      lineHeight: 1.6
+    }
+  }, "\uD83D\uDCA1 \u041F\u043E\u0441\u043B\u0435 7 \u0437\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u043D\u044B\u0445 \u0434\u043D\u0435\u0439 \u043C\u043E\u0436\u043D\u043E \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u043F\u043E\u0432\u0442\u043E\u0440\u043D\u044B\u0439 \u0430\u043D\u0430\u043B\u0438\u0437 \u0441 \u043F\u043E\u043B\u043D\u044B\u043C\u0438 \u0434\u0430\u043D\u043D\u044B\u043C\u0438 \u043D\u0435\u0434\u0435\u043B\u0438."), /*#__PURE__*/React.createElement("button", {
     onClick: run,
     disabled: loading || !canAnalyze,
     style: {
@@ -755,7 +829,7 @@ function AIBlock(_ref9) {
       cursor: canAnalyze ? "pointer" : "not-allowed",
       boxShadow: canAnalyze ? "0 4px 20px rgba(124,111,205,0.4)" : "none"
     }
-  }, loading ? "✨ Анализирую..." : canAnalyze ? "\uD83E\uDD16 \u041F\u043E\u043B\u0443\u0447\u0438\u0442\u044C \u0430\u043D\u0430\u043B\u0438\u0437 \u043D\u0435\u0434\u0435\u043B\u0438 ".concat(weekN) : "\u0417\u0430\u043F\u043E\u043B\u043D\u0438\u0442\u0435 \u0435\u0449\u0451 ".concat((weekN === 1 ? 5 : 4) - filledDays, " \u0434\u043D.")), loading && /*#__PURE__*/React.createElement("div", {
+  }, loading ? "✨ Анализирую..." : canAnalyze ? result ? "\uD83D\uDD04 \u041F\u043E\u0432\u0442\u043E\u0440\u043D\u044B\u0439 \u0430\u043D\u0430\u043B\u0438\u0437 \u043D\u0435\u0434\u0435\u043B\u0438 ".concat(weekN) : "\uD83E\uDD16 \u041F\u043E\u043B\u0443\u0447\u0438\u0442\u044C \u0430\u043D\u0430\u043B\u0438\u0437 \u043D\u0435\u0434\u0435\u043B\u0438 ".concat(weekN) : disabledMsg), loading && /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
       padding: 20
@@ -853,7 +927,9 @@ function Week1(_ref10) {
   let data = _ref10.data,
     setData = _ref10.setData,
     profile = _ref10.profile,
-    onNextWeek = _ref10.onNextWeek;
+    onNextWeek = _ref10.onNextWeek,
+    appState = _ref10.appState,
+    onStateUpdate = _ref10.onStateUpdate;
   const diary = data.diary || {};
   const saveDiaryDay = (day, entry) => {
     const newDiary = _objectSpread(_objectSpread({}, diary), {}, {
@@ -874,7 +950,9 @@ function Week1(_ref10) {
     weekN: 1,
     diaryData: diary,
     profile: profile,
-    onNextWeek: onNextWeek
+    onNextWeek: onNextWeek,
+    appState: appState,
+    onStateUpdate: onStateUpdate
   }));
 }
 
@@ -883,7 +961,9 @@ function Week2(_ref11) {
   let data = _ref11.data,
     setData = _ref11.setData,
     profile = _ref11.profile,
-    onNextWeek = _ref11.onNextWeek;
+    onNextWeek = _ref11.onNextWeek,
+    appState = _ref11.appState,
+    onStateUpdate = _ref11.onStateUpdate;
   const diary = data.diary || {};
   const checks = data.checks || {};
   const saveDiaryDay = (day, entry) => setData(_objectSpread(_objectSpread({}, data), {}, {
@@ -988,7 +1068,9 @@ function Week2(_ref11) {
     diaryData: diary,
     extraData: checks,
     profile: profile,
-    onNextWeek: onNextWeek
+    onNextWeek: onNextWeek,
+    appState: appState,
+    onStateUpdate: onStateUpdate
   }));
 }
 
@@ -997,7 +1079,9 @@ function Week3(_ref12) {
   let data = _ref12.data,
     setData = _ref12.setData,
     profile = _ref12.profile,
-    onNextWeek = _ref12.onNextWeek;
+    onNextWeek = _ref12.onNextWeek,
+    appState = _ref12.appState,
+    onStateUpdate = _ref12.onStateUpdate;
   const diary = data.diary || {};
   const checks = data.checks || {};
   const saveDiaryDay = (day, entry) => setData(_objectSpread(_objectSpread({}, data), {}, {
@@ -1086,7 +1170,9 @@ function Week3(_ref12) {
     diaryData: diary,
     extraData: checks,
     profile: profile,
-    onNextWeek: onNextWeek
+    onNextWeek: onNextWeek,
+    appState: appState,
+    onStateUpdate: onStateUpdate
   }));
 }
 
@@ -1095,7 +1181,9 @@ function Week4(_ref15) {
   let data = _ref15.data,
     setData = _ref15.setData,
     profile = _ref15.profile,
-    onNextWeek = _ref15.onNextWeek;
+    onNextWeek = _ref15.onNextWeek,
+    appState = _ref15.appState,
+    onStateUpdate = _ref15.onStateUpdate;
   const diary = data.diary || {};
   const thoughts = data.thoughts || {};
   const saveDiaryDay = (day, entry) => setData(_objectSpread(_objectSpread({}, data), {}, {
@@ -1198,7 +1286,9 @@ function Week4(_ref15) {
     diaryData: diary,
     extraData: thoughts,
     profile: profile,
-    onNextWeek: onNextWeek
+    onNextWeek: onNextWeek,
+    appState: appState,
+    onStateUpdate: onStateUpdate
   }));
 }
 
@@ -1207,7 +1297,9 @@ function Week5(_ref18) {
   let data = _ref18.data,
     setData = _ref18.setData,
     profile = _ref18.profile,
-    onNextWeek = _ref18.onNextWeek;
+    onNextWeek = _ref18.onNextWeek,
+    appState = _ref18.appState,
+    onStateUpdate = _ref18.onStateUpdate;
   const diary = data.diary || {};
   const checks = data.checks || {};
   const saveDiaryDay = (day, entry) => setData(_objectSpread(_objectSpread({}, data), {}, {
@@ -1300,7 +1392,9 @@ function Week5(_ref18) {
     diaryData: diary,
     extraData: checks,
     profile: profile,
-    onNextWeek: onNextWeek
+    onNextWeek: onNextWeek,
+    appState: appState,
+    onStateUpdate: onStateUpdate
   }));
 }
 
@@ -1309,7 +1403,9 @@ function Week6(_ref23) {
   let allData = _ref23.allData,
     profile = _ref23.profile,
     setData = _ref23.setData,
-    data = _ref23.data;
+    data = _ref23.data,
+    appState = _ref23.appState,
+    onStateUpdate = _ref23.onStateUpdate;
   const diary = data.diary || {};
   const _useState9 = useState(""),
     _useState0 = _slicedToArray(_useState9, 2),
@@ -1412,7 +1508,9 @@ function Week6(_ref23) {
     weekN: 6,
     allWeeksData: allData,
     profile: profile,
-    onResultReady: setAiResult
+    onResultReady: setAiResult,
+    appState: appState,
+    onStateUpdate: onStateUpdate
   }), aiResult && /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 16
@@ -1647,7 +1745,7 @@ function Onboarding(_ref29) {
   const CONTRAINDICATIONS_HARD = ["Апноэ сна или другое дыхательное расстройство во сне — CBT-I без лечения апноэ неэффективен и может усугубить гипоксию", "Острое психотическое состояние", "Эпилепсия — техника ограничения сна может провоцировать приступы"];
   const CONTRAINDICATIONS_CAUTION = ["Депрессия или тревожное расстройство — CBT-I эффективен, но желателен параллельный контроль врача или психотерапевта", "Беременность — техника ограничения сна (неделя 2) не рекомендована; проконсультируйтесь с врачом перед началом", "Приём снотворных или психотропных препаратов, назначенных врачом — обсудите с врачом совместимость с программой", "Биполярное расстройство — депривация сна может спровоцировать маниакальный эпизод; только под наблюдением специалиста"];
   const PRIVACY = "\u0421\u041E\u0413\u041B\u0410\u0421\u0418\u0415 \u041D\u0410 \u041E\u0411\u0420\u0410\u0411\u041E\u0422\u041A\u0423 \u041F\u0415\u0420\u0421\u041E\u041D\u0410\u041B\u042C\u041D\u042B\u0425 \u0414\u0410\u041D\u041D\u042B\u0425\n\n\u0412 \u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0438\u0438 \u0441 \u0437\u0430\u043A\u043E\u043D\u043E\u0434\u0430\u0442\u0435\u043B\u044C\u0441\u0442\u0432\u043E\u043C \u0413\u0440\u0443\u0437\u0438\u0438 \u043E \u043F\u0435\u0440\u0441\u043E\u043D\u0430\u043B\u044C\u043D\u044B\u0445 \u0434\u0430\u043D\u043D\u044B\u0445 (2011 \u0433.) \u0438 \u0420\u0435\u0433\u043B\u0430\u043C\u0435\u043D\u0442\u043E\u043C \u0415\u0421 \u043E \u0437\u0430\u0449\u0438\u0442\u0435 \u0434\u0430\u043D\u043D\u044B\u0445 (GDPR):\n\n1. \u041A\u0410\u041A\u0418\u0415 \u0414\u0410\u041D\u041D\u042B\u0415 \u0421\u041E\u0411\u0418\u0420\u0410\u042E\u0422\u0421\u042F\n\u2014 \u0418\u043C\u044F (\u0438\u043B\u0438 \u043F\u0441\u0435\u0432\u0434\u043E\u043D\u0438\u043C) \u0438 \u0432\u043E\u0437\u0440\u0430\u0441\u0442\n\u2014 \u0410\u0434\u0440\u0435\u0441 \u044D\u043B\u0435\u043A\u0442\u0440\u043E\u043D\u043D\u043E\u0439 \u043F\u043E\u0447\u0442\u044B (\u043F\u0440\u0438 \u0430\u0432\u0442\u043E\u0440\u0438\u0437\u0430\u0446\u0438\u0438 \u0447\u0435\u0440\u0435\u0437 Google)\n\u2014 \u0414\u0430\u043D\u043D\u044B\u0435 \u0434\u043D\u0435\u0432\u043D\u0438\u043A\u0430 \u0441\u043D\u0430: \u0432\u0440\u0435\u043C\u044F \u0437\u0430\u0441\u044B\u043F\u0430\u043D\u0438\u044F, \u043F\u0440\u043E\u0431\u0443\u0436\u0434\u0435\u043D\u0438\u044F, \u043E\u0446\u0435\u043D\u043A\u0438 \u043A\u0430\u0447\u0435\u0441\u0442\u0432\u0430 \u0441\u043D\u0430, \u0441\u043E\u043F\u0443\u0442\u0441\u0442\u0432\u0443\u044E\u0449\u0438\u0435 \u0441\u0438\u043C\u043F\u0442\u043E\u043C\u044B\n\n2. \u041A\u0410\u041A \u0418 \u0413\u0414\u0415 \u0425\u0420\u0410\u041D\u042F\u0422\u0421\u042F \u0414\u0410\u041D\u041D\u042B\u0415\n\u0414\u0430\u043D\u043D\u044B\u0435 \u0445\u0440\u0430\u043D\u044F\u0442\u0441\u044F \u0432 \u0437\u0430\u0449\u0438\u0449\u0451\u043D\u043D\u043E\u043C \u043E\u0431\u043B\u0430\u0447\u043D\u043E\u043C \u0445\u0440\u0430\u043D\u0438\u043B\u0438\u0449\u0435 \u0438 \u043F\u0440\u0438\u0432\u044F\u0437\u0430\u043D\u044B \u043A \u0432\u0430\u0448\u0435\u0439 \u0443\u0447\u0451\u0442\u043D\u043E\u0439 \u0437\u0430\u043F\u0438\u0441\u0438 Google. \u042D\u0442\u043E \u043F\u043E\u0437\u0432\u043E\u043B\u044F\u0435\u0442 \u0441\u0438\u043D\u0445\u0440\u043E\u043D\u0438\u0437\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0434\u0430\u043D\u043D\u044B\u0435 \u043C\u0435\u0436\u0434\u0443 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430\u043C\u0438. \u0414\u043E\u0441\u0442\u0443\u043F \u043A \u0434\u0430\u043D\u043D\u044B\u043C \u0435\u0441\u0442\u044C \u0442\u043E\u043B\u044C\u043A\u043E \u0443 \u0432\u0430\u0441.\n\n3. \u041F\u0415\u0420\u0415\u0414\u0410\u0427\u0410 \u0414\u0410\u041D\u041D\u042B\u0425 \u0414\u041B\u042F AI-\u0410\u041D\u0410\u041B\u0418\u0417\u0410\n\u041F\u0440\u0438 \u0437\u0430\u043F\u0440\u043E\u0441\u0435 \u0430\u043D\u0430\u043B\u0438\u0437\u0430 \u0434\u0430\u043D\u043D\u044B\u0435 \u0434\u043D\u0435\u0432\u043D\u0438\u043A\u0430 \u0441\u043D\u0430 \u043F\u0435\u0440\u0435\u0434\u0430\u044E\u0442\u0441\u044F \u0432 Anthropic API (\u0421\u0428\u0410) \u0434\u043B\u044F \u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0438 \u044F\u0437\u044B\u043A\u043E\u0432\u043E\u0439 \u043C\u043E\u0434\u0435\u043B\u044C\u044E. \u041F\u0435\u0440\u0435\u0434\u0430\u0447\u0430 \u043E\u0441\u0443\u0449\u0435\u0441\u0442\u0432\u043B\u044F\u0435\u0442\u0441\u044F \u0431\u0435\u0437 \u043F\u0440\u044F\u043C\u043E\u0439 \u043F\u0440\u0438\u0432\u044F\u0437\u043A\u0438 \u043A \u0432\u0430\u0448\u0438\u043C \u043B\u0438\u0447\u043D\u044B\u043C \u0434\u0430\u043D\u043D\u044B\u043C (\u0438\u043C\u0435\u043D\u0438, email).\n\n4. \u0410\u0412\u0422\u041E\u0420\u0418\u0417\u0410\u0426\u0418\u042F \u0427\u0415\u0420\u0415\u0417 GOOGLE\n\u0414\u043B\u044F \u0432\u0445\u043E\u0434\u0430 \u0432 \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0443 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u0442\u0441\u044F Google OAuth 2.0. \u041C\u044B \u043F\u043E\u043B\u0443\u0447\u0430\u0435\u043C \u0442\u043E\u043B\u044C\u043A\u043E email \u0438 \u0438\u043C\u044F \u043F\u0440\u043E\u0444\u0438\u043B\u044F Google \u2014 \u0434\u043B\u044F \u0438\u0434\u0435\u043D\u0442\u0438\u0444\u0438\u043A\u0430\u0446\u0438\u0438 \u0443\u0447\u0451\u0442\u043D\u043E\u0439 \u0437\u0430\u043F\u0438\u0441\u0438. \u041F\u0430\u0440\u043E\u043B\u044C Google \u043D\u0430\u043C \u043D\u0435 \u043F\u0435\u0440\u0435\u0434\u0430\u0451\u0442\u0441\u044F \u0438 \u043D\u0435 \u0445\u0440\u0430\u043D\u0438\u0442\u0441\u044F.\n\n5. \u0426\u0415\u041B\u042C \u041E\u0411\u0420\u0410\u0411\u041E\u0422\u041A\u0418\n\u041F\u0435\u0440\u0441\u043E\u043D\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F \u043E\u0431\u0440\u0430\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u043D\u043E\u0439 \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u044B, \u0444\u043E\u0440\u043C\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435 \u0440\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0430\u0446\u0438\u0439, \u0441\u0438\u043D\u0445\u0440\u043E\u043D\u0438\u0437\u0430\u0446\u0438\u044F \u0434\u0430\u043D\u043D\u044B\u0445 \u043C\u0435\u0436\u0434\u0443 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430\u043C\u0438.\n\n6. \u041F\u0420\u0410\u0412\u0410 \u041F\u041E\u041B\u042C\u0417\u041E\u0412\u0410\u0422\u0415\u041B\u042F\n\u0412\u044B \u0432\u043F\u0440\u0430\u0432\u0435 \u0432 \u043B\u044E\u0431\u043E\u0439 \u043C\u043E\u043C\u0435\u043D\u0442 \u0437\u0430\u043F\u0440\u043E\u0441\u0438\u0442\u044C \u0443\u0434\u0430\u043B\u0435\u043D\u0438\u0435 \u0432\u0441\u0435\u0445 \u0441\u0432\u043E\u0438\u0445 \u0434\u0430\u043D\u043D\u044B\u0445, \u043D\u0430\u043F\u0438\u0441\u0430\u0432 \u043D\u0430 perezagruzka48@gmail.com. \u0414\u0430\u043D\u043D\u044B\u0435 \u0431\u0443\u0434\u0443\u0442 \u0443\u0434\u0430\u043B\u0435\u043D\u044B \u0432 \u0442\u0435\u0447\u0435\u043D\u0438\u0435 30 \u0434\u043D\u0435\u0439.\n\n7. \u0422\u0420\u0415\u0422\u042C\u0418 \u0421\u0422\u041E\u0420\u041E\u041D\u042B\n\u0414\u0430\u043D\u043D\u044B\u0435 \u043D\u0435 \u043F\u0435\u0440\u0435\u0434\u0430\u044E\u0442\u0441\u044F \u0438 \u043D\u0435 \u043F\u0440\u043E\u0434\u0430\u044E\u0442\u0441\u044F \u0442\u0440\u0435\u0442\u044C\u0438\u043C \u043B\u0438\u0446\u0430\u043C \u0432 \u043C\u0430\u0440\u043A\u0435\u0442\u0438\u043D\u0433\u043E\u0432\u044B\u0445 \u0446\u0435\u043B\u044F\u0445.";
-  const TERMS = "\u041F\u041E\u041B\u042C\u0417\u041E\u0412\u0410\u0422\u0415\u041B\u042C\u0421\u041A\u041E\u0415 \u0421\u041E\u0413\u041B\u0410\u0428\u0415\u041D\u0418\u0415\n\u041F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0430 \u0443\u043B\u0443\u0447\u0448\u0435\u043D\u0438\u044F \u0441\u043D\u0430 \u0432 \u043C\u0435\u043D\u043E\u043F\u0430\u0443\u0437\u0435\n\n1. \u0421\u0422\u0410\u0422\u0423\u0421 \u041F\u0420\u041E\u0414\u0423\u041A\u0422\u0410\n\u041D\u0430\u0441\u0442\u043E\u044F\u0449\u0430\u044F \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0430 \u044F\u0432\u043B\u044F\u0435\u0442\u0441\u044F \u043E\u0431\u0440\u0430\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u043C \u043F\u0440\u043E\u0434\u0443\u043A\u0442\u043E\u043C \u0438 \u043D\u0435 \u044F\u0432\u043B\u044F\u0435\u0442\u0441\u044F \u043C\u0435\u0434\u0438\u0446\u0438\u043D\u0441\u043A\u043E\u0439 \u0443\u0441\u043B\u0443\u0433\u043E\u0439, \u043C\u0435\u0434\u0438\u0446\u0438\u043D\u0441\u043A\u0438\u043C \u0438\u0437\u0434\u0435\u043B\u0438\u0435\u043C \u0438\u043B\u0438 \u0441\u0440\u0435\u0434\u0441\u0442\u0432\u043E\u043C \u0434\u0438\u0430\u0433\u043D\u043E\u0441\u0442\u0438\u043A\u0438 \u0438 \u043B\u0435\u0447\u0435\u043D\u0438\u044F \u0437\u0430\u0431\u043E\u043B\u0435\u0432\u0430\u043D\u0438\u0439.\n\n2. \u041E\u0413\u0420\u0410\u041D\u0418\u0427\u0415\u041D\u0418\u0415 \u041E\u0422\u0412\u0415\u0422\u0421\u0422\u0412\u0415\u041D\u041D\u041E\u0421\u0422\u0418\n\u0410\u0432\u0442\u043E\u0440 \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u044B \u043D\u0435 \u043D\u0435\u0441\u0451\u0442 \u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0435\u043D\u043D\u043E\u0441\u0442\u0438 \u0437\u0430 \u043F\u043E\u0441\u043B\u0435\u0434\u0441\u0442\u0432\u0438\u044F \u0441\u0430\u043C\u043E\u0441\u0442\u043E\u044F\u0442\u0435\u043B\u044C\u043D\u043E\u0433\u043E \u043F\u0440\u0438\u043C\u0435\u043D\u0435\u043D\u0438\u044F \u043E\u043F\u0438\u0441\u0430\u043D\u043D\u044B\u0445 \u0442\u0435\u0445\u043D\u0438\u043A. \u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u044B \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u044B \u0438\u043D\u0434\u0438\u0432\u0438\u0434\u0443\u0430\u043B\u044C\u043D\u044B \u0438 \u043D\u0435 \u0433\u0430\u0440\u0430\u043D\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u044B.\n\n3. \u0420\u0415\u041A\u041E\u041C\u0415\u041D\u0414\u0410\u0426\u0418\u042F\n\u041F\u0435\u0440\u0435\u0434 \u043D\u0430\u0447\u0430\u043B\u043E\u043C \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u044B \u0440\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0443\u0435\u0442\u0441\u044F \u043F\u0440\u043E\u043A\u043E\u043D\u0441\u0443\u043B\u044C\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C\u0441\u044F \u0441 \u0432\u0440\u0430\u0447\u043E\u043C, \u043E\u0441\u043E\u0431\u0435\u043D\u043D\u043E \u043F\u0440\u0438 \u043D\u0430\u043B\u0438\u0447\u0438\u0438 \u0445\u0440\u043E\u043D\u0438\u0447\u0435\u0441\u043A\u0438\u0445 \u0437\u0430\u0431\u043E\u043B\u0435\u0432\u0430\u043D\u0438\u0439 \u0438\u043B\u0438 \u043F\u0440\u0438\u0451\u043C\u0435 \u043B\u0435\u043A\u0430\u0440\u0441\u0442\u0432\u0435\u043D\u043D\u044B\u0445 \u043F\u0440\u0435\u043F\u0430\u0440\u0430\u0442\u043E\u0432.\n\n4. \u0421\u041E\u0413\u041B\u0410\u0421\u0418\u0415\n\u041D\u0430\u0436\u0438\u043C\u0430\u044F \u043A\u043D\u043E\u043F\u043A\u0443 \xAB\u041D\u0430\u0447\u0430\u0442\u044C \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0443\xBB, \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0430\u0435\u0442, \u0447\u0442\u043E \u043E\u0437\u043D\u0430\u043A\u043E\u043C\u0438\u043B\u0441\u044F \u0441 \u043D\u0430\u0441\u0442\u043E\u044F\u0449\u0438\u043C \u0441\u043E\u0433\u043B\u0430\u0448\u0435\u043D\u0438\u0435\u043C, \u043F\u043E\u043D\u0438\u043C\u0430\u0435\u0442 \u043E\u0431\u0440\u0430\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u0439 \u0445\u0430\u0440\u0430\u043A\u0442\u0435\u0440 \u043F\u0440\u043E\u0434\u0443\u043A\u0442\u0430 \u0438 \u043F\u0440\u0438\u043D\u0438\u043C\u0430\u0435\u0442 \u043D\u0430 \u0441\u0435\u0431\u044F \u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0435\u043D\u043D\u043E\u0441\u0442\u044C \u0437\u0430 \u0441\u0430\u043C\u043E\u0441\u0442\u043E\u044F\u0442\u0435\u043B\u044C\u043D\u043E\u0435 \u043F\u0440\u0438\u043C\u0435\u043D\u0435\u043D\u0438\u0435 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u043E\u0432 \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u044B.\n\n5. \u041F\u0415\u0420\u0421\u041E\u041D\u0410\u041B\u042C\u041D\u042B\u0415 \u0414\u0410\u041D\u041D\u042B\u0415\n\u0412\u0441\u0435 \u0434\u0430\u043D\u043D\u044B\u0435, \u0432\u0432\u043E\u0434\u0438\u043C\u044B\u0435 \u0432 \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0443 (\u0438\u043C\u044F, \u0432\u043E\u0437\u0440\u0430\u0441\u0442, \u0434\u0430\u043D\u043D\u044B\u0435 \u0434\u043D\u0435\u0432\u043D\u0438\u043A\u0430 \u0441\u043D\u0430), \u0445\u0440\u0430\u043D\u044F\u0442\u0441\u044F \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u043E \u043D\u0430 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0435 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F \u0438 \u043D\u0435 \u043F\u0435\u0440\u0435\u0434\u0430\u044E\u0442\u0441\u044F \u0442\u0440\u0435\u0442\u044C\u0438\u043C \u043B\u0438\u0446\u0430\u043C.";
+  const TERMS = "\u041F\u041E\u041B\u042C\u0417\u041E\u0412\u0410\u0422\u0415\u041B\u042C\u0421\u041A\u041E\u0415 \u0421\u041E\u0413\u041B\u0410\u0428\u0415\u041D\u0418\u0415\n\u041F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0430 \u0443\u043B\u0443\u0447\u0448\u0435\u043D\u0438\u044F \u0441\u043D\u0430 \u0432 \u043C\u0435\u043D\u043E\u043F\u0430\u0443\u0437\u0435\n\n1. \u0421\u0422\u0410\u0422\u0423\u0421 \u041F\u0420\u041E\u0414\u0423\u041A\u0422\u0410\n\u041D\u0430\u0441\u0442\u043E\u044F\u0449\u0430\u044F \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0430 \u044F\u0432\u043B\u044F\u0435\u0442\u0441\u044F \u043E\u0431\u0440\u0430\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u043C \u043F\u0440\u043E\u0434\u0443\u043A\u0442\u043E\u043C \u0438 \u043D\u0435 \u044F\u0432\u043B\u044F\u0435\u0442\u0441\u044F \u043C\u0435\u0434\u0438\u0446\u0438\u043D\u0441\u043A\u043E\u0439 \u0443\u0441\u043B\u0443\u0433\u043E\u0439, \u043C\u0435\u0434\u0438\u0446\u0438\u043D\u0441\u043A\u0438\u043C \u0438\u0437\u0434\u0435\u043B\u0438\u0435\u043C \u0438\u043B\u0438 \u0441\u0440\u0435\u0434\u0441\u0442\u0432\u043E\u043C \u0434\u0438\u0430\u0433\u043D\u043E\u0441\u0442\u0438\u043A\u0438 \u0438 \u043B\u0435\u0447\u0435\u043D\u0438\u044F \u0437\u0430\u0431\u043E\u043B\u0435\u0432\u0430\u043D\u0438\u0439.\n\n2. \u041E\u0413\u0420\u0410\u041D\u0418\u0427\u0415\u041D\u0418\u0415 \u041E\u0422\u0412\u0415\u0422\u0421\u0422\u0412\u0415\u041D\u041D\u041E\u0421\u0422\u0418\n\u0410\u0432\u0442\u043E\u0440 \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u044B \u043D\u0435 \u043D\u0435\u0441\u0451\u0442 \u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0435\u043D\u043D\u043E\u0441\u0442\u0438 \u0437\u0430 \u043F\u043E\u0441\u043B\u0435\u0434\u0441\u0442\u0432\u0438\u044F \u0441\u0430\u043C\u043E\u0441\u0442\u043E\u044F\u0442\u0435\u043B\u044C\u043D\u043E\u0433\u043E \u043F\u0440\u0438\u043C\u0435\u043D\u0435\u043D\u0438\u044F \u043E\u043F\u0438\u0441\u0430\u043D\u043D\u044B\u0445 \u0442\u0435\u0445\u043D\u0438\u043A. \u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u044B \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u044B \u0438\u043D\u0434\u0438\u0432\u0438\u0434\u0443\u0430\u043B\u044C\u043D\u044B \u0438 \u043D\u0435 \u0433\u0430\u0440\u0430\u043D\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u044B.\n\n3. \u0420\u0415\u041A\u041E\u041C\u0415\u041D\u0414\u0410\u0426\u0418\u042F\n\u041F\u0435\u0440\u0435\u0434 \u043D\u0430\u0447\u0430\u043B\u043E\u043C \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u044B \u0440\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0443\u0435\u0442\u0441\u044F \u043F\u0440\u043E\u043A\u043E\u043D\u0441\u0443\u043B\u044C\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C\u0441\u044F \u0441 \u0432\u0440\u0430\u0447\u043E\u043C, \u043E\u0441\u043E\u0431\u0435\u043D\u043D\u043E \u043F\u0440\u0438 \u043D\u0430\u043B\u0438\u0447\u0438\u0438 \u0445\u0440\u043E\u043D\u0438\u0447\u0435\u0441\u043A\u0438\u0445 \u0437\u0430\u0431\u043E\u043B\u0435\u0432\u0430\u043D\u0438\u0439 \u0438\u043B\u0438 \u043F\u0440\u0438\u0451\u043C\u0435 \u043B\u0435\u043A\u0430\u0440\u0441\u0442\u0432\u0435\u043D\u043D\u044B\u0445 \u043F\u0440\u0435\u043F\u0430\u0440\u0430\u0442\u043E\u0432.\n\n4. \u0421\u0420\u041E\u041A \u0414\u0415\u0419\u0421\u0422\u0412\u0418\u042F \u0418 \u041E\u0413\u0420\u0410\u041D\u0418\u0427\u0415\u041D\u0418\u042F \u0418\u0421\u041F\u041E\u041B\u042C\u0417\u041E\u0412\u0410\u041D\u0418\u042F\n\u041F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0430 \u0430\u043A\u0442\u0438\u0432\u0438\u0440\u0443\u0435\u0442\u0441\u044F \u0432 \u0434\u0435\u043D\u044C \u043F\u0435\u0440\u0432\u043E\u0433\u043E \u0432\u0445\u043E\u0434\u0430 \u0438 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430 \u0432 \u0442\u0435\u0447\u0435\u043D\u0438\u0435 90 \u0434\u043D\u0435\u0439. \u041F\u043E \u0438\u0441\u0442\u0435\u0447\u0435\u043D\u0438\u0438 \u0441\u0440\u043E\u043A\u0430 \u0434\u043E\u0441\u0442\u0443\u043F \u0431\u043B\u043E\u043A\u0438\u0440\u0443\u0435\u0442\u0441\u044F.\n\nAI-\u0430\u043D\u0430\u043B\u0438\u0437 \u043D\u0435\u0434\u0435\u043B\u0438 (\u043D\u0435\u0434\u0435\u043B\u0438 1\u20135) \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u043F\u043E\u0441\u043B\u0435 \u0437\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F 5 \u0434\u043D\u0435\u0439. \u041F\u043E\u0441\u043B\u0435 \u0437\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F 7 \u0434\u043D\u0435\u0439 \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u043F\u043E\u0432\u0442\u043E\u0440\u043D\u044B\u0439 \u0430\u043D\u0430\u043B\u0438\u0437 \u0441 \u043F\u043E\u043B\u043D\u044B\u043C\u0438 \u0434\u0430\u043D\u043D\u044B\u043C\u0438 \u043D\u0435\u0434\u0435\u043B\u0438. \u041C\u0435\u0436\u0434\u0443 \u043F\u0435\u0440\u0432\u044B\u043C \u0438 \u043F\u043E\u0432\u0442\u043E\u0440\u043D\u044B\u043C \u0430\u043D\u0430\u043B\u0438\u0437\u043E\u043C \u043E\u0434\u043D\u043E\u0439 \u043D\u0435\u0434\u0435\u043B\u0438 \u0434\u043E\u043B\u0436\u043D\u043E \u043F\u0440\u043E\u0439\u0442\u0438 \u043D\u0435 \u043C\u0435\u043D\u0435\u0435 5 \u0434\u043D\u0435\u0439.\n\n\u0418\u0442\u043E\u0433\u043E\u0432\u044B\u0439 \u0430\u043D\u0430\u043B\u0438\u0437 (\u043D\u0435\u0434\u0435\u043B\u044F 6) \u043C\u043E\u0436\u043D\u043E \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u043D\u0435 \u0431\u043E\u043B\u0435\u0435 2 \u0440\u0430\u0437 \u0432 \u0442\u0435\u0447\u0435\u043D\u0438\u0435 \u0441\u0440\u043E\u043A\u0430 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u044B. \u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 \u0432\u0442\u043E\u0440\u043E\u0433\u043E \u0438\u0442\u043E\u0433\u043E\u0432\u043E\u0433\u043E \u0430\u043D\u0430\u043B\u0438\u0437\u0430 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u0442\u0441\u044F \u0434\u043E \u043A\u043E\u043D\u0446\u0430 \u0441\u0440\u043E\u043A\u0430.\n\n5. \u0421\u041E\u0413\u041B\u0410\u0421\u0418\u0415\n\u041D\u0430\u0436\u0438\u043C\u0430\u044F \u043A\u043D\u043E\u043F\u043A\u0443 \xAB\u041D\u0430\u0447\u0430\u0442\u044C \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0443\xBB, \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0430\u0435\u0442, \u0447\u0442\u043E \u043E\u0437\u043D\u0430\u043A\u043E\u043C\u0438\u043B\u0441\u044F \u0441 \u043D\u0430\u0441\u0442\u043E\u044F\u0449\u0438\u043C \u0441\u043E\u0433\u043B\u0430\u0448\u0435\u043D\u0438\u0435\u043C, \u043F\u043E\u043D\u0438\u043C\u0430\u0435\u0442 \u043E\u0431\u0440\u0430\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u0439 \u0445\u0430\u0440\u0430\u043A\u0442\u0435\u0440 \u043F\u0440\u043E\u0434\u0443\u043A\u0442\u0430 \u0438 \u043F\u0440\u0438\u043D\u0438\u043C\u0430\u0435\u0442 \u043D\u0430 \u0441\u0435\u0431\u044F \u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0435\u043D\u043D\u043E\u0441\u0442\u044C \u0437\u0430 \u0441\u0430\u043C\u043E\u0441\u0442\u043E\u044F\u0442\u0435\u043B\u044C\u043D\u043E\u0435 \u043F\u0440\u0438\u043C\u0435\u043D\u0435\u043D\u0438\u0435 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u043E\u0432 \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u044B.\n\n6. \u041F\u0415\u0420\u0421\u041E\u041D\u0410\u041B\u042C\u041D\u042B\u0415 \u0414\u0410\u041D\u041D\u042B\u0415\n\u0412\u0441\u0435 \u0434\u0430\u043D\u043D\u044B\u0435, \u0432\u0432\u043E\u0434\u0438\u043C\u044B\u0435 \u0432 \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0443 (\u0438\u043C\u044F, \u0432\u043E\u0437\u0440\u0430\u0441\u0442, \u0434\u0430\u043D\u043D\u044B\u0435 \u0434\u043D\u0435\u0432\u043D\u0438\u043A\u0430 \u0441\u043D\u0430), \u0445\u0440\u0430\u043D\u044F\u0442\u0441\u044F \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u043E \u043D\u0430 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0435 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F \u0438 \u043D\u0435 \u043F\u0435\u0440\u0435\u0434\u0430\u044E\u0442\u0441\u044F \u0442\u0440\u0435\u0442\u044C\u0438\u043C \u043B\u0438\u0446\u0430\u043C, \u0437\u0430 \u0438\u0441\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435\u043C \u043E\u0431\u0435\u0437\u043B\u0438\u0447\u0435\u043D\u043D\u043E\u0439 \u043F\u0435\u0440\u0435\u0434\u0430\u0447\u0438 \u0432 Anthropic API \u043F\u0440\u0438 \u0437\u0430\u043F\u0440\u043E\u0441\u0435 AI-\u0430\u043D\u0430\u043B\u0438\u0437\u0430.";
   const legalOk = contraOk && termsOk && privacyOk;
   const steps = [
   /*#__PURE__*/
@@ -1734,7 +1832,7 @@ function Onboarding(_ref29) {
       margin: "0 0 20px",
       lineHeight: 1.6
     }
-  }, "\u0414\u0432\u0430 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F \u2014 \u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u044B \u0434\u043B\u044F \u0434\u043E\u0441\u0442\u0443\u043F\u0430 \u043A \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0435."), /*#__PURE__*/React.createElement("div", {
+  }, "\u0422\u0440\u0438 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F \u2014 \u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u044B \u0434\u043B\u044F \u0434\u043E\u0441\u0442\u0443\u043F\u0430 \u043A \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0435."), /*#__PURE__*/React.createElement("div", {
     style: {
       background: "rgba(196,127,58,0.07)",
       border: "1px solid rgba(196,127,58,0.2)",
@@ -2340,6 +2438,19 @@ function SleepProgram() {
     currentWeek = _useState30[0],
     setCurrentWeek = _useState30[1];
   const profile = state.profile || null;
+
+  // Record start date on first use
+  useEffect(() => {
+    if (profile && !state.startDate) {
+      const next = _objectSpread(_objectSpread({}, state), {}, {
+        startDate: Date.now()
+      });
+      setState(next);
+      save(next);
+    }
+  }, [profile]);
+  const expired = isExpired(state);
+  const remaining = daysLeft(state);
   const completeOnboarding = profileData => {
     const next = _objectSpread(_objectSpread({}, state), {}, {
       profile: profileData
@@ -2380,6 +2491,46 @@ function SleepProgram() {
   if (!profile) return /*#__PURE__*/React.createElement(Onboarding, {
     onComplete: completeOnboarding
   });
+
+  // Show expiry screen
+  if (expired) return /*#__PURE__*/React.createElement("div", {
+    style: {
+      minHeight: "100vh",
+      background: "#0d0b1a",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 24
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxWidth: 400,
+      textAlign: "center"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 48,
+      marginBottom: 16
+    }
+  }, "\uD83D\uDD12"), /*#__PURE__*/React.createElement("h2", {
+    style: {
+      color: "#e8e4f5",
+      fontSize: 20,
+      marginBottom: 12
+    }
+  }, "\u0421\u0440\u043E\u043A \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u044B \u0438\u0441\u0442\u0451\u043A"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "#8888aa",
+      fontSize: 14,
+      lineHeight: 1.7,
+      marginBottom: 20
+    }
+  }, "\u041F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0430 \u0431\u044B\u043B\u0430 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430 \u0432 \u0442\u0435\u0447\u0435\u043D\u0438\u0435 90 \u0434\u043D\u0435\u0439 \u0441 \u043C\u043E\u043C\u0435\u043D\u0442\u0430 \u0430\u043A\u0442\u0438\u0432\u0430\u0446\u0438\u0438. \u0412\u0430\u0448\u0438 \u0434\u0430\u043D\u043D\u044B\u0435 \u0434\u043D\u0435\u0432\u043D\u0438\u043A\u0430 \u0441\u043D\u0430 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u044B \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435."), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "#555577",
+      fontSize: 12
+    }
+  }, DISCLAIMER)));
   return /*#__PURE__*/React.createElement("div", {
     style: {
       minHeight: "100vh",
@@ -2434,7 +2585,7 @@ function SleepProgram() {
       color: "#7070a0",
       margin: 0
     }
-  }, profile.name, ", ", profile.age, " \u043B\u0435\u0442 \xB7 CBT-I \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0430"))), /*#__PURE__*/React.createElement(ProgressBar, {
+  }, profile.name, ", ", profile.age, " \u043B\u0435\u0442 \xB7 CBT-I \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0430 \xB7 \u043E\u0441\u0442\u0430\u043B\u043E\u0441\u044C ", remaining, " \u0434\u043D."))), /*#__PURE__*/React.createElement(ProgressBar, {
     value: totalProgress,
     max: 100,
     label: "\u041F\u0440\u043E\u0433\u0440\u0435\u0441\u0441 \u2014 ".concat(totalDays, "/42 \u0434\u043D\u0435\u0439")
@@ -2507,32 +2658,44 @@ function SleepProgram() {
     data: weekData(1),
     setData: setWeekData(1),
     profile: profile,
-    onNextWeek: () => setCurrentWeek(2)
+    onNextWeek: () => setCurrentWeek(2),
+    appState: state,
+    onStateUpdate: setState
   }), currentWeek === 2 && /*#__PURE__*/React.createElement(Week2, {
     data: weekData(2),
     setData: setWeekData(2),
     profile: profile,
-    onNextWeek: () => setCurrentWeek(3)
+    onNextWeek: () => setCurrentWeek(3),
+    appState: state,
+    onStateUpdate: setState
   }), currentWeek === 3 && /*#__PURE__*/React.createElement(Week3, {
     data: weekData(3),
     setData: setWeekData(3),
     profile: profile,
-    onNextWeek: () => setCurrentWeek(4)
+    onNextWeek: () => setCurrentWeek(4),
+    appState: state,
+    onStateUpdate: setState
   }), currentWeek === 4 && /*#__PURE__*/React.createElement(Week4, {
     data: weekData(4),
     setData: setWeekData(4),
     profile: profile,
-    onNextWeek: () => setCurrentWeek(5)
+    onNextWeek: () => setCurrentWeek(5),
+    appState: state,
+    onStateUpdate: setState
   }), currentWeek === 5 && /*#__PURE__*/React.createElement(Week5, {
     data: weekData(5),
     setData: setWeekData(5),
     profile: profile,
-    onNextWeek: () => setCurrentWeek(6)
+    onNextWeek: () => setCurrentWeek(6),
+    appState: state,
+    onStateUpdate: setState
   }), currentWeek === 6 && /*#__PURE__*/React.createElement(Week6, {
     allData: allWeeksData,
     profile: profile,
     data: weekData(6),
-    setData: setWeekData(6)
+    setData: setWeekData(6),
+    appState: state,
+    onStateUpdate: setState
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 32,
