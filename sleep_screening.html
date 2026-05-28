@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Скрининг сна — какой у вас тип нарушений?</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+    background: #0d0b1a;
+    color: #e8e4f5;
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 0 0 60px;
+  }
+
+  .wrap { width: 100%; max-width: 480px; padding: 32px 20px; }
+
+  /* header */
+  .header { text-align: center; margin-bottom: 36px; }
+  .header-icon { font-size: 40px; margin-bottom: 12px; }
+  .header h1 { font-size: 20px; font-weight: 600; color: #e8e4f5; line-height: 1.4; margin-bottom: 6px; }
+  .header p { font-size: 13px; color: #7070a0; line-height: 1.6; }
+
+  /* progress */
+  .progress-row { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+  .progress-track { flex: 1; height: 3px; background: rgba(255,255,255,0.08); border-radius: 2px; }
+  .progress-fill { height: 100%; background: #7c6fcd; border-radius: 2px; transition: width 0.35s ease; }
+  .progress-label { font-size: 12px; color: #7070a0; white-space: nowrap; }
+
+  /* question */
+  .q-text { font-size: 17px; font-weight: 500; color: #e8e4f5; line-height: 1.55; margin-bottom: 20px; }
+
+  /* options */
+  .opt {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 14px 16px;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    background: rgba(255,255,255,0.03);
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .opt:hover { border-color: rgba(124,111,205,0.4); background: rgba(124,111,205,0.06); }
+  .opt.sel { border-color: #7c6fcd; background: rgba(124,111,205,0.12); }
+  .opt-radio {
+    width: 18px; height: 18px; min-width: 18px; border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,0.2);
+    margin-top: 2px; display: flex; align-items: center; justify-content: center;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .opt.sel .opt-radio { border-color: #7c6fcd; background: #7c6fcd; }
+  .opt-dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; display: none; }
+  .opt.sel .opt-dot { display: block; }
+  .opt-body { flex: 1; }
+  .opt-label { font-size: 14px; color: #d0cce8; line-height: 1.5; }
+  .opt.sel .opt-label { color: #e8e4f5; }
+  .opt-hint { font-size: 12px; color: #7070a0; margin-top: 3px; line-height: 1.4; }
+
+  /* buttons */
+  .btn-row { display: flex; gap: 8px; margin-top: 20px; }
+  .btn {
+    padding: 12px 20px; border-radius: 10px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: opacity 0.15s, background 0.15s;
+  }
+  .btn-primary {
+    flex: 1; background: linear-gradient(135deg, #7c6fcd, #5b8dee);
+    color: #fff; border: none;
+    box-shadow: 0 4px 16px rgba(124,111,205,0.3);
+  }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-primary:disabled { background: rgba(255,255,255,0.06); color: #555577; box-shadow: none; cursor: not-allowed; }
+  .btn-ghost {
+    width: 72px; background: transparent;
+    border: 1px solid rgba(255,255,255,0.1); color: #7070a0;
+  }
+  .btn-ghost:hover { border-color: rgba(255,255,255,0.2); color: #a0a0c0; }
+
+  /* result */
+  .result { display: none; }
+  .result-badge {
+    display: inline-block; font-size: 12px; padding: 4px 12px;
+    border-radius: 20px; margin-bottom: 14px; font-weight: 500;
+  }
+  .badge-green { background: rgba(29,158,117,0.15); color: #4ca88a; border: 1px solid rgba(29,158,117,0.25); }
+  .badge-orange { background: rgba(196,127,58,0.15); color: #c47f3a; border: 1px solid rgba(196,127,58,0.25); }
+  .badge-red { background: rgba(180,60,60,0.15); color: #e07070; border: 1px solid rgba(180,60,60,0.25); }
+  .badge-purple { background: rgba(124,111,205,0.15); color: #a89fe8; border: 1px solid rgba(124,111,205,0.25); }
+
+  .result-type { font-size: 21px; font-weight: 600; color: #e8e4f5; line-height: 1.35; margin-bottom: 10px; }
+  .result-desc { font-size: 14px; color: #a0a0c0; line-height: 1.75; margin-bottom: 18px; }
+
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; }
+  .tag { font-size: 12px; padding: 4px 10px; border-radius: 16px; }
+  .tag-yes { background: rgba(29,158,117,0.12); color: #4ca88a; border: 1px solid rgba(29,158,117,0.2); }
+  .tag-no { background: rgba(255,255,255,0.05); color: #7070a0; border: 1px solid rgba(255,255,255,0.08); }
+
+  .rec-block {
+    border-radius: 12px; padding: 16px 18px; margin-bottom: 10px;
+  }
+  .rec-fit { background: rgba(29,158,117,0.08); border-left: 3px solid #1D9E75; }
+  .rec-nofit { background: rgba(180,60,60,0.08); border-left: 3px solid #c05050; }
+  .rec-note { background: rgba(124,111,205,0.08); border-left: 3px solid #7c6fcd; }
+  .rec-title { font-size: 13px; font-weight: 600; margin-bottom: 5px; }
+  .rec-fit .rec-title { color: #4ca88a; }
+  .rec-nofit .rec-title { color: #e07070; }
+  .rec-note .rec-title { color: #a89fe8; }
+  .rec-text { font-size: 13px; line-height: 1.65; }
+  .rec-fit .rec-text { color: #8ad4b8; }
+  .rec-nofit .rec-text { color: #d09090; }
+  .rec-note .rec-text { color: #c0b8e8; }
+
+  .disclaimer { font-size: 11px; color: #444466; text-align: center; line-height: 1.6; margin: 20px 0 16px; }
+
+  .btn-restart {
+    width: 100%; padding: 12px; border-radius: 10px;
+    background: transparent; border: 1px solid rgba(255,255,255,0.1);
+    color: #7070a0; font-size: 13px; cursor: pointer; font-family: inherit;
+  }
+  .btn-restart:hover { border-color: rgba(255,255,255,0.2); color: #a0a0c0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="header-icon">🌙</div>
+    <h1>Какой у вас тип нарушений сна?</h1>
+    <p>7 вопросов · 2 минуты · персональный результат</p>
+  </div>
+
+  <div id="quiz">
+    <div class="progress-row">
+      <div class="progress-track"><div class="progress-fill" id="prog"></div></div>
+      <div class="progress-label" id="prog-label">1 / 7</div>
+    </div>
+    <div class="q-text" id="qtext"></div>
+    <div id="opts"></div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" id="btn-back" onclick="goBack()">← назад</button>
+      <button class="btn btn-primary" id="btn-next" onclick="goNext()" disabled>Далее →</button>
+    </div>
+  </div>
+
+  <div class="result" id="result"></div>
+</div>
+
+<script>
+const QS = [
+  {
+    id: "onset",
+    q: "Как долго вы обычно засыпаете после того как легли?",
+    opts: [
+      { label: "До 20 минут", hint: "Засыпаю довольно быстро", val: 0 },
+      { label: "20–45 минут", hint: "Иногда подолгу лежу без сна", val: 1 },
+      { label: "Более 45 минут", hint: "Сон не приходит очень долго", val: 2 },
+    ]
+  },
+  {
+    id: "wake",
+    q: "Просыпаетесь ли вы ночью?",
+    opts: [
+      { label: "Нет или очень редко", val: 0 },
+      { label: "1–2 раза, но быстро засыпаю снова", val: 1 },
+      { label: "Несколько раз или подолгу не могу уснуть после", val: 2 },
+    ]
+  },
+  {
+    id: "early",
+    q: "Просыпаетесь ли вы раньше желаемого и не можете уснуть снова?",
+    opts: [
+      { label: "Нет", val: 0 },
+      { label: "Иногда", val: 1 },
+      { label: "Регулярно — за 1–2 часа до нужного времени", val: 2 },
+    ]
+  },
+  {
+    id: "hotflash",
+    q: "Беспокоят ли вас приливы или ночная потливость?",
+    opts: [
+      { label: "Нет", val: 0 },
+      { label: "Иногда — но на сон особо не влияют", val: 1 },
+      { label: "Да — часто будят или мешают заснуть", val: 2 },
+    ]
+  },
+  {
+    id: "anxiety",
+    q: "Ложась в постель, вы думаете о том, удастся ли заснуть — или о тревожных вещах?",
+    opts: [
+      { label: "Нет, обычно не думаю об этом", val: 0 },
+      { label: "Иногда — мысли мешают расслабиться", val: 1 },
+      { label: "Да — тревога о сне почти каждую ночь", val: 2 },
+    ]
+  },
+  {
+    id: "daytime",
+    q: "Как проблемы со сном влияют на вашу дневную жизнь?",
+    opts: [
+      { label: "Почти не влияют — чувствую себя нормально", val: 0 },
+      { label: "Заметная усталость, сложнее сосредоточиться", val: 1 },
+      { label: "Сильно влияют — настроение, работоспособность, качество жизни", val: 2 },
+    ]
+  }
+];
+
+let cur = 0;
+let answers = {};
+
+function render() {
+  const q = QS[cur];
+  document.getElementById("qtext").textContent = q.q;
+  document.getElementById("prog-label").textContent = (cur + 1) + " / 6";
+  document.getElementById("prog").style.width = ((cur / QS.length) * 100) + "%";
+  document.getElementById("btn-back").style.visibility = cur === 0 ? "hidden" : "visible";
+
+  const optsEl = document.getElementById("opts");
+  optsEl.innerHTML = "";
+  q.opts.forEach(function(o, i) {
+    const div = document.createElement("div");
+    div.className = "opt" + (answers[q.id] === i ? " sel" : "");
+    div.innerHTML =
+      '<div class="opt-radio"><div class="opt-dot"></div></div>' +
+      '<div class="opt-body">' +
+        '<div class="opt-label">' + o.label + '</div>' +
+        (o.hint ? '<div class="opt-hint">' + o.hint + '</div>' : '') +
+      '</div>';
+    div.onclick = function() {
+      answers[q.id] = i;
+      document.getElementById("btn-next").disabled = false;
+      render();
+    };
+    optsEl.appendChild(div);
+  });
+
+  const nextBtn = document.getElementById("btn-next");
+  nextBtn.disabled = answers[q.id] === undefined;
+  nextBtn.textContent = cur === QS.length - 1 ? "Узнать результат →" : "Далее →";
+}
+
+function goNext() {
+  if (answers[QS[cur].id] === undefined) return;
+  if (cur < QS.length - 1) { cur++; render(); }
+  else showResult();
+}
+
+function goBack() {
+  if (cur > 0) { cur--; render(); }
+}
+
+function showResult() {
+  document.getElementById("quiz").style.display = "none";
+  const rv = document.getElementById("result");
+  rv.style.display = "block";
+
+  const get = function(id) { return QS.find(function(q){return q.id===id;}).opts[answers[id]||0].val; };
+  const onset = get("onset"), wake = get("wake"), early = get("early");
+  const hotflash = get("hotflash"), anxiety = get("anxiety");
+  const daytime = get("daytime");
+
+  const total = onset + wake + early + hotflash + anxiety + daytime;
+  const cbtScore = onset + wake + early + anxiety;
+  const earlyOnly = early >= 1 && onset === 0 && wake <= 1;
+  const realInsomnia = (onset >= 1 || wake >= 1) && daytime >= 1;
+
+  var type, desc, badgeClass, badgeText, cbtFit, altNote;
+
+  if (total <= 3) {
+    type = "Сон в норме или лёгкие нарушения";
+    desc = "По вашим ответам нарушений сна минимально или нет. То, что вас беспокоит, скорее всего не укладывается в классическую картину бессонницы — возможно, дело в качестве фаз, а не в количестве сна.";
+    badgeClass = "badge-green"; badgeText = "Бессонница не выявлена";
+    cbtFit = false;
+    altNote = "Если вы спите достаточно по времени, но не чувствуете себя отдохнувшей — это может быть гормональная история. В менопаузе снижение эстрогена нарушает глубокие фазы сна и REM. Это не бессонница в классическом смысле — это другой запрос.";
+
+  } else if (earlyOnly && hotflash <= 1 && anxiety <= 1) {
+    type = "Раннее пробуждение";
+    desc = "Вы засыпаете нормально и не просыпаетесь среди ночи — но просыпаетесь раньше нужного и не можете уснуть снова. Это отдельный тип нарушений со своей природой.";
+    badgeClass = "badge-orange"; badgeText = "Раннее пробуждение";
+    cbtFit = false;
+    altNote = "В менопаузе раннее пробуждение чаще связано с ранним подъёмом кортизола на фоне снижения прогестерона, либо с депрессивным компонентом. CBT-I здесь даёт ограниченный эффект. Стоит обсудить с врачом гормональный фон и исключить депрессию как причину.";
+
+  } else if (hotflash === 2 && onset === 0 && anxiety <= 1) {
+    type = "Нарушения сна на фоне приливов";
+    desc = "Главная причина вашего плохого сна — ночные приливы и потливость. Мозг не выработал тревожную ассоциацию с кроватью — он просто просыпается от жара.";
+    badgeClass = "badge-orange"; badgeText = "Гормональный тип";
+    cbtFit = false;
+    altNote = "CBT-I поможет частично — особенно гигиена сна и контроль стимулов. Но корень проблемы гормональный. В первую очередь стоит обсудить с врачом МГТ или негормональные варианты снижения приливов.";
+
+  } else if (cbtScore >= 4 && realInsomnia) {
+    type = "Бессонница — классический CBT-I профиль";
+    desc = "У вас сформировалась устойчивая картина бессонницы: трудности с засыпанием или ночные пробуждения, тревога вокруг сна, влияние на дневную жизнь. Именно для этого создан CBT-I.";
+    badgeClass = "badge-purple"; badgeText = "CBT-I профиль";
+    cbtFit = true;
+    altNote = hotflash >= 1 ? "Приливы усугубляют картину — программа учитывает это и включает отдельные техники для ночных симптомов менопаузы." : null;
+
+  } else if (anxiety >= 1 && realInsomnia) {
+    type = "Бессонница с тревожной составляющей";
+    desc = "Есть трудности с засыпанием или ночные пробуждения, и тревога вокруг сна уже начала закрепляться. CBT-I работает именно с этим механизмом.";
+    badgeClass = "badge-purple"; badgeText = "Поддаётся CBT-I";
+    cbtFit = true;
+    altNote = null;
+
+  } else if (hotflash >= 1 && realInsomnia) {
+    type = "Смешанный тип: приливы и бессонница";
+    desc = "У вас сочетаются два фактора: ночные симптомы менопаузы нарушают сон, и одновременно начала формироваться поведенческая бессонница. Оба требуют внимания.";
+    badgeClass = "badge-orange"; badgeText = "Смешанный тип";
+    cbtFit = true;
+    altNote = "Рекомендую два шага параллельно: обсудить с врачом МГТ для снижения приливов — и пройти CBT-I программу для поведенческой составляющей. Вместе они дадут лучший результат, чем каждый по отдельности.";
+
+  } else if (!realInsomnia) {
+    type = "Лёгкие нарушения сна";
+    desc = "Жалобы есть, но засыпание и ночной сон в целом не нарушены, и на дневную жизнь это существенно не влияет. Это пограничная ситуация — не классическая бессонница.";
+    badgeClass = "badge-green"; badgeText = "Лёгкая степень";
+    cbtFit = false;
+    altNote = "На этом этапе достаточно базовой гигиены сна и наблюдения. CBT-I — избыточный инструмент для лёгких нарушений. Если ситуация ухудшится — стоит вернуться к этому скринингу.";
+
+  } else {
+    type = "Нарушения сна — картина неоднозначная";
+    desc = "Ваши симптомы не укладываются в один чёткий тип. Возможно, несколько факторов действуют вместе — гормональные, ситуативные или связанные с образом жизни.";
+    badgeClass = "badge-orange"; badgeText = "Требует уточнения";
+    cbtFit = false;
+    altNote = "Рекомендую начать с дневника сна на 7 дней, чтобы увидеть картину точнее. Обсудите результаты с врачом — это поможет выбрать правильный инструмент.";
+  }
+
+  var tagsData = [
+    onset > 0 ? ["Трудно засыпать", true] : null,
+    wake > 0 ? ["Ночные пробуждения", true] : null,
+    early > 0 ? ["Раннее пробуждение", true] : null,
+    hotflash > 0 ? ["Приливы ночью", true] : null,
+    anxiety > 0 ? ["Тревога о сне", true] : null,
+    realInsomnia ? ["Влияет на дневную жизнь", true] : null,
+    daytime >= 1 ? ["Влияет на день", true] : null,
+    onset === 0 && wake === 0 ? ["Засыпание нормальное", false] : null,
+  ].filter(Boolean);
+
+  var ctaText;
+  if (badgeText === "Гормональный тип" || badgeText === "Раннее пробуждение") {
+    ctaText = "В канале — разбор гормональных механизмов сна в менопаузе, МГТ и того, что реально влияет на качество сна в этот период.";
+  } else if (badgeText === "Лёгкая степень" || badgeText === "Бессонница не выявлена") {
+    ctaText = "В канале — практичные материалы о гигиене сна, циркадных ритмах и о том, как менопауза меняет архитектуру сна.";
+  } else {
+    ctaText = "В канале — материалы о сне, гормонах и менопаузе, которые помогут разобраться в своей ситуации.";
+  }
+
+  rv.innerHTML =
+    '<span class="result-badge ' + badgeClass + '">' + badgeText + '</span>' +
+    '<div class="result-type">' + type + '</div>' +
+    '<div class="result-desc">' + desc + '</div>' +
+    '<div class="tags">' + tagsData.map(function(t){ return '<span class="tag ' + (t[1]?'tag-yes':'tag-no') + '">' + t[0] + '</span>'; }).join("") + '</div>' +
+
+    '<div class="rec-block ' + (cbtFit ? 'rec-fit' : 'rec-nofit') + '">' +
+      '<div class="rec-title">' + (cbtFit ? 'Программа CBT-I подходит для вашего случая' : 'Программа CBT-I — не в первую очередь') + '</div>' +
+      '<div class="rec-text">' + (cbtFit
+        ? 'CBT-I эффективна именно при такой картине. По данным исследований, 70–80% участников отмечают устойчивое улучшение через 6 недель.'
+        : 'Классическая бессонница — не ваш главный запрос. Программа даст частичный эффект, но не устранит корень проблемы.') +
+      '</div>' +
+    '</div>' +
+
+    (altNote ?
+      '<div class="rec-block rec-note">' +
+        '<div class="rec-title">Что важно учесть</div>' +
+        '<div class="rec-text">' + altNote + '</div>' +
+      '</div>'
+    : '') +
+
+    (cbtFit ?
+      '<div style="margin-top:20px; background:linear-gradient(135deg,rgba(124,111,205,0.15),rgba(91,141,238,0.1)); border:1px solid rgba(124,111,205,0.3); border-radius:14px; padding:20px; text-align:center;">' +
+        '<p style="color:#a89fe8; font-weight:600; font-size:15px; margin:0 0 8px;">Готовы начать?</p>' +
+        '<p style="color:#8888aa; font-size:13px; line-height:1.6; margin:0 0 16px;">6 недель · пошаговый протокол · AI-анализ ваших данных</p>' +
+        '<a href="#" style="display:block; padding:13px; border-radius:10px; background:linear-gradient(135deg,#7c6fcd,#5b8dee); color:#fff; font-weight:700; font-size:15px; text-decoration:none;">Перейти к программе →</a>' +
+      '</div>'
+    :
+      '<div style="margin-top:20px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:20px;">' +
+        '<p style="color:#c8c0f0; font-weight:600; font-size:14px; margin:0 0 8px;">Что делать дальше?</p>' +
+        '<p style="color:#8888aa; font-size:13px; line-height:1.7; margin:0;">' + ctaText + '</p>' +
+      '</div>'
+    ) +
+
+    '<div class="disclaimer">Скрининг носит образовательный характер и не является медицинской услугой.</div>' +
+    '<button class="btn-restart" onclick="restart()">Пройти заново</button>';
+}
+
+function restart() {
+  cur = 0; answers = {};
+  document.getElementById("quiz").style.display = "block";
+  document.getElementById("result").style.display = "none";
+  render();
+}
+
+render();
+</script>
+</body>
+</html>
