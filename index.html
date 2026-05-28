@@ -476,25 +476,20 @@ function nextAnalysisIn(state, weekN) {
   return Math.ceil(5 - daysSince);
 }
 async function callAI(prompt) {
-  var _data$content;
   let maxTokens = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 1000;
-  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+  const resp = await fetch("https://sleep-api.vercel.app/api/analyze", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: maxTokens,
-      messages: [{
-        role: "user",
-        content: prompt
-      }]
+      prompt,
+      maxTokens
     })
   });
   if (!resp.ok) throw new Error("API error ".concat(resp.status));
   const data = await resp.json();
-  return ((_data$content = data.content) === null || _data$content === void 0 ? void 0 : _data$content.map(b => b.text || "").join("")) || "";
+  return data.text || "";
 }
 
 // ─── sleep efficiency ──────────────────────────────────────────────────────
