@@ -20,6 +20,32 @@
 </head>
 <body>
 <div id="root"></div>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+  import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+  const app = initializeApp({
+    apiKey: "AIzaSyBJpscXc-E49fK88ivLv-1n-wT07WQ1OuM",
+    authDomain: "sleep-program-app.firebaseapp.com",
+    projectId: "sleep-program-app",
+    storageBucket: "sleep-program-app.firebasestorage.app",
+    messagingSenderId: "143105114213",
+    appId: "1:143105114213:web:e0e2043d1196a5dfa3868c"
+  });
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  window._firebaseAuth = auth;
+  window._firebaseDb = db;
+  window._firebaseReady = true;
+  window._GoogleAuthProvider = GoogleAuthProvider;
+  window._signInWithPopup = signInWithPopup;
+  window._signOut = signOut;
+  window._onAuthStateChanged = onAuthStateChanged;
+  window._firestoreDoc = doc;
+  window._firestoreSetDoc = setDoc;
+  window._firestoreGetDoc = getDoc;
+  window.dispatchEvent(new Event('firebaseReady'));
+</script>
 <script>/**
  * @license React
  * react.production.min.js
@@ -366,6 +392,44 @@ const load = () => {
   }
 };
 const save = data => localStorage.setItem(LS_KEY, JSON.stringify(data));
+
+// ─── Firebase config ────────────────────────────────────────────────────────
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBJpscXc-E49fK88ivLv-1n-wT07WQ1OuM",
+  authDomain: "sleep-program-app.firebaseapp.com",
+  projectId: "sleep-program-app",
+  storageBucket: "sleep-program-app.firebasestorage.app",
+  messagingSenderId: "143105114213",
+  appId: "1:143105114213:web:e0e2043d1196a5dfa3868c"
+};
+let firebaseApp = null;
+let firebaseAuth = null;
+let firebaseDb = null;
+function initFirebase() {
+  if (window._firebaseReady) {
+    firebaseAuth = window._firebaseAuth;
+    firebaseDb = window._firebaseDb;
+    return;
+  }
+}
+async function saveToFirebase(userId, data) {
+  if (!firebaseDb) return;
+  try {
+    await window._firestoreSetDoc(window._firestoreDoc(firebaseDb, "users", userId), data);
+  } catch (e) {
+    console.error("Firebase save error:", e);
+  }
+}
+async function loadFromFirebase(userId) {
+  if (!firebaseDb) return null;
+  try {
+    const snap = await window._firestoreGetDoc(window._firestoreDoc(firebaseDb, "users", userId));
+    return snap.exists() ? snap.data() : null;
+  } catch (e) {
+    console.error("Firebase load error:", e);
+    return null;
+  }
+}
 const WEEKS = [{
   n: 1,
   title: "Диагностика",
@@ -737,14 +801,17 @@ function AIBlock(_ref9) {
   const run = async () => {
     setLoading(true);
     setErr("");
-    setResult("");
     try {
       const text = await callAI(buildPrompt(), weekN === 6 ? 2500 : 1000);
       setResult(text);
       if (onResultReady) onResultReady(text);
       if (onStateUpdate) onStateUpdate(s => {
-        const next = recordAnalysis(s, weekN);
-        save(next);
+        // Save analysis result and mark as done
+        const key = isFullWeek || weekN === 6 ? "analysis_w".concat(weekN, "_full") : "analysis_w".concat(weekN, "_partial");
+        const next = _objectSpread(_objectSpread({}, s), {}, {
+          [key]: text,
+          ["lastAnalysis_w".concat(weekN)]: Date.now()
+        });
         return next;
       });
     } catch (e) {
@@ -755,52 +822,66 @@ function AIBlock(_ref9) {
   };
   const filledDays = diaryData ? Object.keys(diaryData).length : 0;
   const isFullWeek = filledDays >= 7;
-  const hasEnoughDays = weekN === 6 ? true : filledDays >= 5;
-  const limitOk = appState ? canRunAnalysis(appState, weekN) : true;
 
-  // For weeks 1-5: first analysis after 5 days, full analysis after 7 days
-  // After first analysis (5 days): show "fill 2 more days" hint
-  // After 7 days: show full analysis button
-  const hasFirstAnalysis = appState && appState["lastAnalysis_w".concat(weekN)];
-  const showFillHint = weekN !== 6 && hasFirstAnalysis && !isFullWeek;
-  const canAnalyze = hasEnoughDays && (weekN === 6 ? limitOk : !hasFirstAnalysis || isFullWeek);
-  let btnLabel = "";
-  if (loading) {
-    btnLabel = "✨ Анализирую...";
-  } else if (!hasEnoughDays) {
-    btnLabel = "\u0417\u0430\u043F\u043E\u043B\u043D\u0438\u0442\u0435 \u0435\u0449\u0451 ".concat(5 - filledDays, " \u0434\u043D.");
-  } else if (weekN !== 6 && hasFirstAnalysis && !isFullWeek) {
-    btnLabel = "\u0417\u0430\u043F\u043E\u043B\u043D\u0438\u0442\u0435 \u0435\u0449\u0451 ".concat(7 - filledDays, " \u0434\u043D. \u0434\u043B\u044F \u043F\u043E\u043B\u043D\u043E\u0433\u043E \u0430\u043D\u0430\u043B\u0438\u0437\u0430");
-  } else if (weekN !== 6 && isFullWeek && hasFirstAnalysis) {
-    btnLabel = "\uD83D\uDD04 \u041F\u043E\u043B\u043D\u044B\u0439 \u0430\u043D\u0430\u043B\u0438\u0437 \u043D\u0435\u0434\u0435\u043B\u0438 ".concat(weekN);
-  } else if (weekN === 6 && !limitOk) {
-    btnLabel = "Использовано 2 из 2 анализов";
-  } else {
-    btnLabel = result ? "\uD83D\uDD04 \u041F\u043E\u0432\u0442\u043E\u0440\u043D\u044B\u0439 \u0430\u043D\u0430\u043B\u0438\u0437" : "\uD83E\uDD16 \u041F\u043E\u043B\u0443\u0447\u0438\u0442\u044C \u0430\u043D\u0430\u043B\u0438\u0437 \u043D\u0435\u0434\u0435\u043B\u0438 ".concat(weekN);
-  }
-  const canClick = canAnalyze && !loading && (weekN === 6 ? limitOk : true);
+  // Saved results
+  const partialResult = (appState === null || appState === void 0 ? void 0 : appState["analysis_w".concat(weekN, "_partial")]) || "";
+  const fullResult = (appState === null || appState === void 0 ? void 0 : appState["analysis_w".concat(weekN, "_full")]) || "";
+  const hasPartial = !!partialResult;
+  const hasFull = !!fullResult;
+
+  // What to show
+  const displayResult = result || (isFullWeek ? fullResult || partialResult : partialResult);
+
+  // Button logic
+  const showPartialBtn = !hasPartial && filledDays >= 5 && weekN !== 6;
+  const showFullBtn = hasPartial && !hasFull && isFullWeek && weekN !== 6;
+  const showWeek6Btn = weekN === 6 && !hasFull;
+  const showBtn = showPartialBtn || showFullBtn || showWeek6Btn;
+  let btnLabel = "🤖 Получить анализ недели";
+  if (loading) btnLabel = "✨ Анализирую...";else if (showFullBtn) btnLabel = "\uD83D\uDD04 \u041F\u043E\u043B\u043D\u044B\u0439 \u0430\u043D\u0430\u043B\u0438\u0437 \u043D\u0435\u0434\u0435\u043B\u0438 ".concat(weekN);else if (!showBtn && filledDays < 5) btnLabel = "\u0417\u0430\u043F\u043E\u043B\u043D\u0438\u0442\u0435 \u0435\u0449\u0451 ".concat(5 - filledDays, " \u0434\u043D.");
   return /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 20,
       borderTop: "1px solid rgba(255,255,255,0.1)",
       paddingTop: 20
     }
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: canClick ? run : undefined,
-    disabled: !canClick,
+  }, showBtn && /*#__PURE__*/React.createElement("button", {
+    onClick: run,
+    disabled: loading,
     style: {
       width: "100%",
       padding: "14px",
       borderRadius: 12,
-      background: canClick ? "linear-gradient(135deg, #7c6fcd 0%, #5b8dee 100%)" : "rgba(255,255,255,0.05)",
-      border: canClick ? "none" : "1px solid rgba(255,255,255,0.1)",
-      color: canClick ? "#fff" : "#666",
+      background: "linear-gradient(135deg, #7c6fcd 0%, #5b8dee 100%)",
+      border: "none",
+      color: "#fff",
       fontWeight: 700,
       fontSize: 15,
-      cursor: canClick ? "pointer" : "not-allowed",
-      boxShadow: canClick ? "0 4px 20px rgba(124,111,205,0.4)" : "none"
+      cursor: loading ? "not-allowed" : "pointer",
+      boxShadow: "0 4px 20px rgba(124,111,205,0.4)",
+      opacity: loading ? 0.7 : 1
     }
-  }, btnLabel), loading && /*#__PURE__*/React.createElement("div", {
+  }, btnLabel), !showBtn && !displayResult && filledDays < 5 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "12px 16px",
+      background: "rgba(255,255,255,0.03)",
+      borderRadius: 10,
+      color: "#7070a0",
+      fontSize: 13,
+      textAlign: "center"
+    }
+  }, "\u0417\u0430\u043F\u043E\u043B\u043D\u0438\u0442\u0435 \u0435\u0449\u0451 ", 5 - filledDays, " \u0434\u043D. \u0434\u043B\u044F \u0430\u043D\u0430\u043B\u0438\u0437\u0430"), hasPartial && !hasFull && !isFullWeek && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 12,
+      background: "rgba(124,111,205,0.08)",
+      border: "1px solid rgba(124,111,205,0.2)",
+      borderRadius: 10,
+      padding: 12,
+      color: "#a89fe8",
+      fontSize: 13,
+      textAlign: "center"
+    }
+  }, "\uD83D\uDCA1 \u0417\u0430\u043F\u043E\u043B\u043D\u0438\u0442\u0435 \u0435\u0449\u0451 ", 7 - filledDays, " \u0434\u043D. \u0434\u043B\u044F \u043F\u043E\u043B\u043D\u043E\u0433\u043E \u0430\u043D\u0430\u043B\u0438\u0437\u0430 \u043D\u0435\u0434\u0435\u043B\u0438"), loading && /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
       padding: 20
@@ -831,7 +912,7 @@ function AIBlock(_ref9) {
       color: "#f09090",
       fontSize: 14
     }
-  }, err), result && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, err), displayResult && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 16,
       background: "rgba(124,111,205,0.08)",
@@ -839,7 +920,7 @@ function AIBlock(_ref9) {
       borderRadius: 14,
       padding: 20
     }
-  }, result.split("\n").map((line, i) => {
+  }, displayResult.split("\n").map((line, i) => {
     if (line.startsWith("## ")) return /*#__PURE__*/React.createElement("h3", {
       key: i,
       style: {
@@ -874,18 +955,7 @@ function AIBlock(_ref9) {
         margin: "4px 0"
       }
     }, line);
-  })), showFillHint && /*#__PURE__*/React.createElement("div", {
-    style: {
-      marginTop: 12,
-      background: "rgba(124,111,205,0.08)",
-      border: "1px solid rgba(124,111,205,0.2)",
-      borderRadius: 10,
-      padding: 12,
-      color: "#a89fe8",
-      fontSize: 13,
-      textAlign: "center"
-    }
-  }, "\uD83D\uDCA1 \u0417\u0430\u043F\u043E\u043B\u043D\u0438\u0442\u0435 \u0435\u0449\u0451 ", 7 - filledDays, " \u0434\u043D. \u0434\u043B\u044F \u043F\u043E\u043B\u043D\u043E\u0433\u043E \u0430\u043D\u0430\u043B\u0438\u0437\u0430 \u043D\u0435\u0434\u0435\u043B\u0438"), onNextWeek && /*#__PURE__*/React.createElement("button", {
+  })), onNextWeek && /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       onNextWeek();
       window.scrollTo({
@@ -2425,7 +2495,74 @@ function SleepProgram() {
     _useState30 = _slicedToArray(_useState29, 2),
     currentWeek = _useState30[0],
     setCurrentWeek = _useState30[1];
+  const _useState31 = useState(null),
+    _useState32 = _slicedToArray(_useState31, 2),
+    user = _useState32[0],
+    setUser = _useState32[1];
+  const _useState33 = useState(true),
+    _useState34 = _slicedToArray(_useState33, 2),
+    authLoading = _useState34[0],
+    setAuthLoading = _useState34[1];
+  const _useState35 = useState(false),
+    _useState36 = _slicedToArray(_useState35, 2),
+    syncing = _useState36[0],
+    setSyncing = _useState36[1];
+
+  // Init Firebase and listen for auth state
+  useEffect(() => {
+    const setup = () => {
+      initFirebase();
+      if (!firebaseAuth) {
+        setAuthLoading(false);
+        return;
+      }
+      const unsubscribe = window._onAuthStateChanged(firebaseAuth, async u => {
+        setUser(u);
+        if (u) {
+          setSyncing(true);
+          const remote = await loadFromFirebase(u.uid);
+          if (remote) {
+            setState(remote);
+            save(remote);
+          }
+          setSyncing(false);
+        }
+        setAuthLoading(false);
+      });
+      return unsubscribe;
+    };
+    if (window._firebaseReady) {
+      const unsub = setup();
+      return unsub;
+    } else {
+      window.addEventListener('firebaseReady', () => setup());
+      // Fallback if Firebase fails
+      setTimeout(() => {
+        if (authLoading) setAuthLoading(false);
+      }, 5000);
+    }
+  }, []);
+  const signInWithGoogle = async () => {
+    if (!firebaseAuth) return;
+    try {
+      const provider = new window._GoogleAuthProvider();
+      await window._signInWithPopup(firebaseAuth, provider);
+    } catch (e) {
+      console.error("Sign in error:", e);
+    }
+  };
+  const signOut = async () => {
+    if (!firebaseAuth) return;
+    await window._signOut(firebaseAuth);
+    setUser(null);
+  };
   const profile = state.profile || null;
+
+  // Save to both localStorage and Firebase
+  const saveAll = data => {
+    save(data);
+    if (user) saveToFirebase(user.uid, data);
+  };
 
   // Record start date on first use
   useEffect(() => {
@@ -2434,7 +2571,7 @@ function SleepProgram() {
         startDate: Date.now()
       });
       setState(next);
-      save(next);
+      saveAll(next);
     }
   }, [profile]);
   const expired = isExpired(state);
@@ -2444,7 +2581,7 @@ function SleepProgram() {
       profile: profileData
     });
     setState(next);
-    save(next);
+    saveAll(next);
   };
   const weekData = n => state["w".concat(n)] || {};
   const setWeekData = n => data => {
@@ -2452,7 +2589,7 @@ function SleepProgram() {
       ["w".concat(n)]: data
     });
     setState(next);
-    save(next);
+    saveAll(next);
   };
   const totalDays = Object.entries(state).filter(_ref34 => {
     let _ref35 = _slicedToArray(_ref34, 1),
@@ -2468,12 +2605,107 @@ function SleepProgram() {
   for (let i = 1; i <= 6; i++) allWeeksData[i] = weekData(i);
   const reset = () => {
     if (window.confirm("Сбросить все данные программы?")) {
+      var _firebaseDb;
       localStorage.removeItem(LS_KEY);
+      if (user) (_firebaseDb = firebaseDb) === null || _firebaseDb === void 0 || _firebaseDb.collection("users").doc(user.uid).delete();
       setState({});
       setCurrentWeek(1);
     }
   };
   const weekDays = n => Object.keys(weekData(n).diary || {}).length;
+
+  // Loading screen
+  if (authLoading || syncing) return /*#__PURE__*/React.createElement("div", {
+    style: {
+      minHeight: "100vh",
+      background: "#0d0b1a",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "column",
+      gap: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 40,
+      height: 40,
+      border: "3px solid rgba(124,111,205,0.3)",
+      borderTopColor: "#7c6fcd",
+      borderRadius: "50%",
+      animation: "spin 1s linear infinite"
+    }
+  }), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "#7070a0",
+      fontSize: 14
+    }
+  }, syncing ? "Загрузка ваших данных…" : "Инициализация…"));
+
+  // Auth screen — show if no user and no local profile
+  if (!user && !profile) return /*#__PURE__*/React.createElement("div", {
+    style: {
+      minHeight: "100vh",
+      background: "#0d0b1a",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 24
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxWidth: 400,
+      width: "100%",
+      textAlign: "center"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 48,
+      marginBottom: 16
+    }
+  }, "\uD83C\uDF19"), /*#__PURE__*/React.createElement("h1", {
+    style: {
+      color: "#e8e4f5",
+      fontSize: 22,
+      fontWeight: 700,
+      marginBottom: 12
+    }
+  }, "\u041F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0430 \u0443\u043B\u0443\u0447\u0448\u0435\u043D\u0438\u044F \u0441\u043D\u0430 \u0434\u043B\u044F \u0436\u0435\u043D\u0449\u0438\u043D"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "#8888aa",
+      fontSize: 14,
+      lineHeight: 1.7,
+      marginBottom: 28
+    }
+  }, "6-\u043D\u0435\u0434\u0435\u043B\u044C\u043D\u0430\u044F CBT-I \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0430 \u0441 \u043F\u0435\u0440\u0441\u043E\u043D\u0430\u043B\u044C\u043D\u044B\u043C AI-\u0430\u043D\u0430\u043B\u0438\u0437\u043E\u043C. \u0412\u043E\u0439\u0434\u0438\u0442\u0435 \u0447\u0435\u0440\u0435\u0437 Google \u0447\u0442\u043E\u0431\u044B \u0434\u0430\u043D\u043D\u044B\u0435 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u043B\u0438\u0441\u044C \u043D\u0430 \u0432\u0441\u0435\u0445 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430\u0445."), /*#__PURE__*/React.createElement("button", {
+    onClick: signInWithGoogle,
+    style: {
+      width: "100%",
+      padding: "14px",
+      borderRadius: 12,
+      background: "#fff",
+      border: "none",
+      color: "#333",
+      fontWeight: 700,
+      fontSize: 15,
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+      fontFamily: "inherit"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 18
+    }
+  }, "G"), " \u0412\u043E\u0439\u0442\u0438 \u0447\u0435\u0440\u0435\u0437 Google"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "#555577",
+      fontSize: 12,
+      marginTop: 20,
+      lineHeight: 1.6
+    }
+  }, DISCLAIMER)));
 
   // Show onboarding if no profile yet
   if (!profile) return /*#__PURE__*/React.createElement(Onboarding, {
@@ -2573,7 +2805,7 @@ function SleepProgram() {
       color: "#7070a0",
       margin: 0
     }
-  }, profile.name, ", ", profile.age, " \u043B\u0435\u0442 \xB7 CBT-I \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0430 \xB7 \u043E\u0441\u0442\u0430\u043B\u043E\u0441\u044C ", remaining, " \u0434\u043D."))), /*#__PURE__*/React.createElement(ProgressBar, {
+  }, profile.name, ", ", profile.age, " \u043B\u0435\u0442 \xB7 CBT-I \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0430"))), /*#__PURE__*/React.createElement(ProgressBar, {
     value: totalProgress,
     max: 100,
     label: "\u041F\u0440\u043E\u0433\u0440\u0435\u0441\u0441 \u2014 ".concat(totalDays, "/42 \u0434\u043D\u0435\u0439")
@@ -2648,42 +2880,66 @@ function SleepProgram() {
     profile: profile,
     onNextWeek: () => setCurrentWeek(2),
     appState: state,
-    onStateUpdate: setState
+    onStateUpdate: fn => {
+      const next = fn(state);
+      setState(next);
+      saveAll(next);
+    }
   }), currentWeek === 2 && /*#__PURE__*/React.createElement(Week2, {
     data: weekData(2),
     setData: setWeekData(2),
     profile: profile,
     onNextWeek: () => setCurrentWeek(3),
     appState: state,
-    onStateUpdate: setState
+    onStateUpdate: fn => {
+      const next = fn(state);
+      setState(next);
+      saveAll(next);
+    }
   }), currentWeek === 3 && /*#__PURE__*/React.createElement(Week3, {
     data: weekData(3),
     setData: setWeekData(3),
     profile: profile,
     onNextWeek: () => setCurrentWeek(4),
     appState: state,
-    onStateUpdate: setState
+    onStateUpdate: fn => {
+      const next = fn(state);
+      setState(next);
+      saveAll(next);
+    }
   }), currentWeek === 4 && /*#__PURE__*/React.createElement(Week4, {
     data: weekData(4),
     setData: setWeekData(4),
     profile: profile,
     onNextWeek: () => setCurrentWeek(5),
     appState: state,
-    onStateUpdate: setState
+    onStateUpdate: fn => {
+      const next = fn(state);
+      setState(next);
+      saveAll(next);
+    }
   }), currentWeek === 5 && /*#__PURE__*/React.createElement(Week5, {
     data: weekData(5),
     setData: setWeekData(5),
     profile: profile,
     onNextWeek: () => setCurrentWeek(6),
     appState: state,
-    onStateUpdate: setState
+    onStateUpdate: fn => {
+      const next = fn(state);
+      setState(next);
+      saveAll(next);
+    }
   }), currentWeek === 6 && /*#__PURE__*/React.createElement(Week6, {
     allData: allWeeksData,
     profile: profile,
     data: weekData(6),
     setData: setWeekData(6),
     appState: state,
-    onStateUpdate: setState
+    onStateUpdate: fn => {
+      const next = fn(state);
+      setState(next);
+      saveAll(next);
+    }
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 32,
@@ -2702,26 +2958,40 @@ function SleepProgram() {
   }, DISCLAIMER), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
-      justifyContent: "center"
+      gap: 8,
+      justifyContent: "center",
+      flexWrap: "wrap"
     }
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       const next = _objectSpread({}, state);
       delete next.profile;
       setState(next);
-      save(next);
+      saveAll(next);
     },
     style: {
       background: "transparent",
       border: "1px solid rgba(124,111,205,0.2)",
       borderRadius: 8,
-      padding: "8px 20px",
+      padding: "8px 16px",
       color: "#7070a0",
       fontSize: 12,
       cursor: "pointer",
       fontFamily: "inherit"
     }
-  }, "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043F\u0440\u043E\u0444\u0438\u043B\u044C")))));
+  }, "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043F\u0440\u043E\u0444\u0438\u043B\u044C"), user && /*#__PURE__*/React.createElement("button", {
+    onClick: signOut,
+    style: {
+      background: "transparent",
+      border: "1px solid rgba(255,255,255,0.1)",
+      borderRadius: 8,
+      padding: "8px 16px",
+      color: "#555577",
+      fontSize: 12,
+      cursor: "pointer",
+      fontFamily: "inherit"
+    }
+  }, "\u0412\u044B\u0439\u0442\u0438 (", user.email, ")")))));
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(SleepProgram));</script>
