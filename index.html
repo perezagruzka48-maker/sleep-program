@@ -668,16 +668,13 @@ function DiaryForm(_ref) {
         boxSizing: "border-box"
       }
     }));
-  }), [["quality", "Качество сна", 10], ["stress", "Стресс вчера", 10], ["hotFlashes", "Приливы ночью", 10]].map(_ref6 => {
+  }), [["quality", "Качество сна", 10], ["stress", "Стресс вчера", 10]].map(_ref6 => {
     let _ref7 = _slicedToArray(_ref6, 3),
       k = _ref7[0],
       label = _ref7[1],
       max = _ref7[2];
     return /*#__PURE__*/React.createElement("div", {
-      key: k,
-      style: {
-        gridColumn: k === "hotFlashes" ? "1 / -1" : "auto"
-      }
+      key: k
     }, /*#__PURE__*/React.createElement("label", {
       style: {
         fontSize: 11,
@@ -689,7 +686,7 @@ function DiaryForm(_ref) {
       style: {
         color: "#e8e4f5"
       }
-    }, form[k]), k !== "hotFlashes" ? "/10" : " шт."), /*#__PURE__*/React.createElement("input", {
+    }, form[k]), "/10"), /*#__PURE__*/React.createElement("input", {
       type: "range",
       min: "0",
       max: max,
@@ -700,7 +697,81 @@ function DiaryForm(_ref) {
         accentColor: "#7c6fcd"
       }
     }));
-  })), /*#__PURE__*/React.createElement("button", {
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      gridColumn: "1 / -1",
+      display: "flex",
+      alignItems: "center",
+      gap: 12
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 11,
+      color: "#8888aa",
+      whiteSpace: "nowrap"
+    }
+  }, "\u041F\u0440\u0438\u043B\u0438\u0432\u044B \u043D\u043E\u0447\u044C\u044E:"), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      cursor: "pointer"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: () => up("hotFlashes", form.hotFlashes === "0" ? "1" : "0"),
+    style: {
+      width: 36,
+      height: 20,
+      borderRadius: 10,
+      background: form.hotFlashes !== "0" ? "#7c6fcd" : "rgba(255,255,255,0.1)",
+      position: "relative",
+      transition: "background 0.2s",
+      cursor: "pointer",
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "absolute",
+      top: 2,
+      left: form.hotFlashes !== "0" ? 18 : 2,
+      width: 16,
+      height: 16,
+      borderRadius: "50%",
+      background: "#fff",
+      transition: "left 0.2s"
+    }
+  })), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13,
+      color: form.hotFlashes !== "0" ? "#a89fe8" : "#666"
+    }
+  }, form.hotFlashes !== "0" ? "Были" : "Не было")), form.hotFlashes !== "0" && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: "#8888aa"
+    }
+  }, "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E:"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: "1",
+    max: "20",
+    value: form.hotFlashes === "1" ? "1" : form.hotFlashes,
+    onChange: e => up("hotFlashes", e.target.value),
+    style: {
+      width: 56,
+      background: "rgba(255,255,255,0.07)",
+      border: "1px solid rgba(255,255,255,0.15)",
+      borderRadius: 8,
+      padding: "4px 8px",
+      color: "#e8e4f5",
+      fontSize: 14
+    }
+  })))), /*#__PURE__*/React.createElement("button", {
     onClick: () => onSave(day, form),
     style: {
       marginTop: 14,
